@@ -120,7 +120,7 @@
   let uid = 0;
   function newLayer(type, name, id) {
     return { id: id || 'L' + Date.now().toString(36) + (uid++), name: name || TYPES[type], type, on: true, lv: '', f: {},
-      st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, dramp: 'fire', radius: 1, intensity: 1 } };
+      st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1 } };
   }
   // Dashboard mode has no Marks card tiles, so defaults are guessed from the names and types of a sheet's columns.
   function guess(cx) {
@@ -320,7 +320,8 @@
       const P = env.pt(it.lon, it.lat); if (!P) { it._s = 0; continue; }
       const s = it._s = symSize(m, it, env); it._x = P[0]; it._y = P[1];
       symPath(c, st.shape, P[0], P[1], s); c.globalAlpha = st.alpha * dim(m, it); c.fillStyle = colOf(m, it) || T.dflt; c.fill(); c.globalAlpha = 1;
-      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = hover && hover.it === it ? 2 : 0.6; c.stroke();
+      const hollow = colOf(m, it) === 'transparent';
+      c.strokeStyle = st.ocolor || (hollow ? (G.style === 'dark' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.75)') : 'rgba(0,0,0,.45)'); c.lineWidth = hover && hover.it === it ? 2 : hollow ? 1.3 : 0.6; c.stroke();
       if (st.labels && it.name && env.z >= 2) label(c, it.name, P[0] + s + 3, P[1] + 4);
     }
   }
@@ -495,7 +496,7 @@
   }
   function outline(c, m, it) {
     const hi = hover && hover.it === it;
-    if (m.L.st.outline || hi) { c.globalAlpha = 1; c.strokeStyle = hi ? (G.style === 'dark' ? '#fff' : '#000') : (G.style === 'dark' ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.4)'); c.lineWidth = hi ? 1.8 : 0.6 * Math.max(0.6, m.L.st.lw); c.stroke(); }
+    if (m.L.st.outline || hi) { c.globalAlpha = 1; c.strokeStyle = hi ? (G.style === 'dark' ? '#fff' : '#000') : (m.L.st.ocolor || (G.style === 'dark' ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.4)')); c.lineWidth = hi ? 1.8 : 0.6 * Math.max(0.6, m.L.st.lw); c.stroke(); }
   }
   function drawShapesFlat(c, v, m) {
     const S = v.S0 * v.z, W = v.W, H = v.H, st = m.L.st; c.lineJoin = 'round'; c.lineCap = 'round';
@@ -787,7 +788,9 @@
   function rng(L, key, label, min, max, step) { return '<label>' + label + '<input type="range" data-l="' + L.id + '" data-k="st.' + key + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + L.st[key] + '"></label>'; }
   function chk(L, key, label) { return '<label class="chk"><input type="checkbox" data-l="' + L.id + '" data-k="st.' + key + '"' + (L.st[key] ? ' checked' : '') + '>&nbsp;' + label + '</label>'; }
   function palette(L) { return '<label>Palette<select data-l="' + L.id + '" data-k="st.ramp">' + Object.entries(RAMPS).map(([k, v]) => '<option value="' + k + '"' + (L.st.ramp === k ? ' selected' : '') + '>' + v[0] + '</option>').join('') + '</select></label>'; }
-  function fixedColor(L) { return '<label>Fixed colour<span><input type="color" data-l="' + L.id + '" data-k="st.color" value="' + (L.st.color || '#4aa3df') + '"> <button type="button" data-act="clearcolor" data-l="' + L.id + '" title="Use the default colour">auto</button></span></label>'; }
+  const isClear = L => L.st.color === 'transparent';
+  function fixedColor(L) { return '<label>Fixed colour<span><input type="color" data-l="' + L.id + '" data-k="st.color" value="' + (L.st.color && !isClear(L) ? L.st.color : '#4aa3df') + '"' + (isClear(L) ? ' style="opacity:.35"' : '') + '> <button type="button" data-act="clearcolor" data-l="' + L.id + '" title="Use the default colour">auto</button> <button type="button" data-act="transparent" data-l="' + L.id + '" title="No colour: see-through fill (shapes) or hollow symbols"' + (isClear(L) ? ' style="font-weight:bold;outline:1px solid #4aa3df"' : '') + '>transparent</button></span></label>'; }
+  function outlineColor(L) { return '<label>Outline colour<span><input type="color" data-l="' + L.id + '" data-k="st.ocolor" value="' + (L.st.ocolor || '#f28e2b') + '"> <button type="button" data-act="clearocolor" data-l="' + L.id + '" title="Use the default outline">auto</button></span></label>'; }
   function layerBody(L) {
     let h = '';
     h += '<label>Type<select data-l="' + L.id + '" data-k="type">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '"' + (L.type === k ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label>';
@@ -799,12 +802,12 @@
       h += '<label>Rows where ' + esc(trunc(G.lf, 14)) + ' =<select data-l="' + L.id + '" data-k="lv"><option value="">(all rows)</option>' + vals.map(v => '<option value="' + esc(v) + '"' + (v === L.lv ? ' selected' : '') + '>' + esc(trunc(v, 26)) + '</option>').join('') + '</select></label>';
     }
     if (L.type === 'shapes') {
-      h += fsel(L, 'geom', 'Geometry', spatial) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'size', 'Size by (points)', numeric) + fsel(L, 'time', 'Time field', timeable) + palette(L) + fixedColor(L) +
+      h += fsel(L, 'geom', 'Geometry', spatial) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'size', 'Size by (points)', numeric) + fsel(L, 'time', 'Time field', timeable) + palette(L) + fixedColor(L) + outlineColor(L) +
         rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + rng(L, 'lw', 'Line width', 0.3, 4, 0.1) + chk(L, 'outline', 'Outline') + chk(L, 'labels', 'Labels');
     } else if (L.type === 'symbols') {
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'size', 'Size by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
         '<label>Symbol<select data-l="' + L.id + '" data-k="st.shape">' + SHAPES.map(([k, n]) => '<option value="' + k + '"' + (L.st.shape === k ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
-        palette(L) + fixedColor(L) + rng(L, 'size', 'Symbol size', 0.4, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
+        palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'size', 'Symbol size', 0.4, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
     } else if (L.type === 'density') {
       const st = L.st; if (st.radius == null) st.radius = 1; if (st.intensity == null) st.intensity = 1; if (!DRAMPS[st.dramp]) st.dramp = 'fire';
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'weight', 'Weight by (optional)', numeric) + fsel(L, 'time', 'Time field', timeable) +
@@ -883,6 +886,8 @@
     else if (act === 'up' && i >= 0 && i < layers.length - 1) [layers[i], layers[i + 1]] = [layers[i + 1], layers[i]];
     else if (act === 'down' && i > 0) [layers[i], layers[i - 1]] = [layers[i - 1], layers[i]];
     else if (act === 'clearcolor' && i >= 0) layers[i].st.color = '';
+    else if (act === 'transparent' && i >= 0) layers[i].st.color = 'transparent';
+    else if (act === 'clearocolor' && i >= 0) layers[i].st.ocolor = '';
     persist(); rebuild(); renderPanel();
   });
   pbody.addEventListener('pointerdown', e => e.stopPropagation());
