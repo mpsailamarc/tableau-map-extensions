@@ -35,7 +35,7 @@
   const $ = id => document.getElementById(id);
 
   // ================= state =================
-  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6, tm: 'period', tn: 3, tg: 'exact', tsp: 1.5, tloop: true, dismissed: [] };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
+  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6, tm: 'period', tn: 3, tg: 'exact', tsp: 1.5, tloop: true, fade: false, fn: 4, dismissed: [] };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
   // Two ways to get data: as a worksheet extension (the one sheet it sits on) or as a dashboard extension (one sheet per layer).
   const DASH = !!window.MS_DASHBOARD;
   let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null, sheets: {} };
@@ -102,6 +102,11 @@
     T.grain = all(d => d.getUTCMonth() === 0 && d.getUTCDate() === 1 && d.getUTCHours() === 0) ? 'year' : all(d => d.getUTCDate() === 1 && d.getUTCHours() === 0) ? 'month' : all(d => d.getUTCHours() === 0 && d.getUTCMinutes() === 0) ? 'day' : 'time';
     if (T.idx >= T.steps.length) T.idx = T.steps.length - 1;
     if (T.steps.length < 2) { T.idx = -1; T.playing = false; }
+  }
+  function fadeOf(it) {          // how solid an older mark still is: 1 for the current step, down to nearly clear after the fade length
+    if (!G.fade || it.t == null || T.idx < 0) return 1;
+    const age = T.idx - (T.index.get(it.t) || 0); if (age <= 0) return 1;
+    return Math.max(0.06, 1 - age / Math.max(1, G.tm === 'trail' ? Math.min(G.fn, G.tn) : G.fn));
   }
   function timeVisible(it) {
     if (it.t == null) return true;
@@ -375,10 +380,10 @@
     for (const it of m.items) {
       const P = env.pt(it.lon, it.lat); if (!P) { it._s = 0; continue; }
       const s = it._s = symSize(m, it, env); it._x = P[0]; it._y = P[1];
-      symPath(c, st.shape, P[0], P[1], s); c.globalAlpha = st.alpha * dim(m, it); c.fillStyle = colOf(m, it) || T.dflt; c.fill(); c.globalAlpha = 1;
+      symPath(c, st.shape, P[0], P[1], s); c.globalAlpha = st.alpha * dim(m, it) * fadeOf(it); c.fillStyle = colOf(m, it) || T.dflt; c.fill(); c.globalAlpha = 1;
       const hollow = colOf(m, it) === 'transparent';
-      c.strokeStyle = st.ocolor || (hollow ? (G.style === 'dark' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.75)') : 'rgba(0,0,0,.45)'); c.lineWidth = hover && hover.it === it ? 2 : hollow ? 1.3 : 0.6; c.stroke();
-      if (st.labels && it.name) label(c, it.name, P[0] + s + 3, P[1] + 4);
+      c.strokeStyle = st.ocolor || (hollow ? (G.style === 'dark' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.75)') : 'rgba(0,0,0,.45)'); c.lineWidth = hover && hover.it === it ? 2 : hollow ? 1.3 : 0.6; c.globalAlpha = fadeOf(it); c.stroke(); c.globalAlpha = 1;
+      if (st.labels && it.name && fadeOf(it) > 0.5) label(c, it.name, P[0] + s + 3, P[1] + 4);
     }
   }
   function hitSymbols(x, y, m) {
@@ -405,7 +410,7 @@
         const col = it.col || st.color || T.dflt;
         if (prev && Math.abs(P[0] - prev[0]) < lim) {
           const wpx = (m.f.width && it.w != null ? 1 + Math.sqrt(Math.max(0, it.w) / m.wmax) * 5 : 2) * st.lw * (hot ? 1.5 : 1);
-          c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(P[0], P[1]); c.lineWidth = wpx; c.strokeStyle = col; c.globalAlpha = st.alpha * fade; c.stroke();
+          c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(P[0], P[1]); c.lineWidth = wpx; c.strokeStyle = col; c.globalAlpha = st.alpha * fade * fadeOf(it); c.stroke();
         }
         prev = P;
       }
@@ -566,7 +571,7 @@
     const r = 16 * (st.radius || 1) * Math.min(2.2, 0.75 + env.z * 0.22) * S, sp = dSprite(r), half = sp.width / 2, I = 0.14 * (st.intensity || 1), weighted = !!m.f.weight;
     for (const it of m.items) {
       const P = env.pt(it.lon, it.lat); if (!P) continue;
-      g.globalAlpha = Math.min(1, I * (weighted ? 0.35 + 0.65 * Math.sqrt(it.w / m.wmax) : 1)); g.drawImage(sp, P[0] * S - half, P[1] * S - half);
+      g.globalAlpha = Math.min(1, I * fadeOf(it) * (weighted ? 0.35 + 0.65 * Math.sqrt(it.w / m.wmax) : 1)); g.drawImage(sp, P[0] * S - half, P[1] * S - half);
     }
     g.globalAlpha = 1;
     const img = g.getImageData(0, 0, w, h), d = img.data, lut = dLut(st);
@@ -985,7 +990,7 @@
   function loadSettings() {
     const g = TX.settings.get;
     G.map = g('map', G.map); G.style = g('style', G.style); G.base = g('base', '1') === '1'; G.lf = g('lf', ''); G.sv = g('sv', 'fit'); G.rot = g('rot', '0') === '1'; G.rs = parseFloat(g('rs', '6')) || 6; try { G.fixed = JSON.parse(g('fixed', 'null')); } catch (e) { G.fixed = null; }
-    G.tm = g('tm', 'period'); G.tn = parseInt(g('tn', '3'), 10) || 3; G.tg = g('tg', 'exact'); G.tsp = parseFloat(g('tsp', '1.5')) || 1.5; G.tloop = g('tloop', '1') === '1';
+    G.tm = g('tm', 'period'); G.tn = parseInt(g('tn', '3'), 10) || 3; G.tg = g('tg', 'exact'); G.tsp = parseFloat(g('tsp', '1.5')) || 1.5; G.tloop = g('tloop', '1') === '1'; G.fade = g('fade', '0') === '1'; G.fn = parseInt(g('fn', '4'), 10) || 4;
     try { G.dismissed = JSON.parse(g('dismissed', '[]')); } catch (e) { G.dismissed = []; }
     try { const s = g('layers', ''); if (s) { layers = JSON.parse(s); auto = false; } } catch (e) { /* ignore a damaged value */ }
   }
@@ -994,7 +999,7 @@
   function writeSettings() {
     {
       TX.settings.set('map', G.map); TX.settings.set('style', G.style); TX.settings.set('base', G.base ? '1' : '0'); TX.settings.set('lf', G.lf); TX.settings.set('sv', G.sv); TX.settings.set('rot', G.rot ? '1' : '0'); TX.settings.set('rs', String(G.rs)); TX.settings.set('fixed', JSON.stringify(G.fixed));
-      TX.settings.set('tm', G.tm); TX.settings.set('tn', String(G.tn)); TX.settings.set('tg', G.tg); TX.settings.set('tsp', String(G.tsp)); TX.settings.set('tloop', G.tloop ? '1' : '0');
+      TX.settings.set('tm', G.tm); TX.settings.set('tn', String(G.tn)); TX.settings.set('tg', G.tg); TX.settings.set('tsp', String(G.tsp)); TX.settings.set('tloop', G.tloop ? '1' : '0'); TX.settings.set('fade', G.fade ? '1' : '0'); TX.settings.set('fn', String(G.fn));
       TX.settings.set('dismissed', JSON.stringify(G.dismissed)); TX.settings.set('layers', JSON.stringify(layers));
     }
   }
@@ -1099,7 +1104,8 @@
       '<label>Show<select data-g="tm"><option value="period"' + (G.tm === 'period' ? ' selected' : '') + '>This step only</option><option value="cum"' + (G.tm === 'cum' ? ' selected' : '') + '>Everything up to this step</option><option value="trail"' + (G.tm === 'trail' ? ' selected' : '') + '>The last few steps</option></select></label>' +
       (G.tm === 'trail' ? '<label>Steps kept<input type="range" data-g="tn" min="2" max="12" step="1" value="' + G.tn + '"></label>' : '') +
       '<label>Step by<select data-g="tg"><option value="exact"' + (G.tg === 'exact' ? ' selected' : '') + '>Each date value</option><option value="year"' + (G.tg === 'year' ? ' selected' : '') + '>Year</option><option value="month"' + (G.tg === 'month' ? ' selected' : '') + '>Month</option><option value="day"' + (G.tg === 'day' ? ' selected' : '') + '>Day</option></select></label>' +
-      '<label>Speed<input type="range" data-g="tsp" min="0.25" max="6" step="0.25" value="' + G.tsp + '"></label><label class="chk"><input type="checkbox" data-g="tloop"' + (G.tloop ? ' checked' : '') + '>&nbsp;Loop</label>'
+      '<label>Speed<input type="range" data-g="tsp" min="0.25" max="6" step="0.25" value="' + G.tsp + '"></label><label class="chk"><input type="checkbox" data-g="tloop"' + (G.tloop ? ' checked' : '') + '>&nbsp;Loop</label>' +
+      '<label class="chk" title="Marks from earlier steps become more transparent the older they are (symbols, tracks and density)"><input type="checkbox" data-g="fade"' + (G.fade ? ' checked' : '') + '>&nbsp;Fade out older marks</label>' + (G.fade ? '<label>Fade over (steps)<input type="range" data-g="fn" min="1" max="30" step="1" value="' + G.fn + '"></label>' : '') + ''
       : '<div class="sub">Choose a date field under <b>Time field</b> in the layer to get a play button.</div>') + '</div>';
     h += '<div class="lh">' + (DASH ? 'Layers <span class="sub">(top of the list is drawn last)</span>' : 'Layer') + '</div>';
     [...layers].reverse().forEach(L => {
@@ -1121,7 +1127,7 @@
       const k = t.dataset.g, v = valueOf(t); G[k] = v; claim(); persist();
       if (k === 'rot' || k === 'rs') { tick(); if (k === 'rot') renderPanel(); return; }
       if (k === 'tg') { rebuild(); renderPanel(); return; }
-      if (k === 'tm' || k === 'tn' || k === 'tsp' || k === 'tloop') { applyTime(); redraw(); updateTL(); if (k === 'tm') renderPanel(); return; }
+      if (k === 'tm' || k === 'tn' || k === 'tsp' || k === 'tloop' || k === 'fade' || k === 'fn') { applyTime(); redraw(); updateTL(); if (k === 'tm' || k === 'fade') renderPanel(); return; }
       if (k === 'sv') { applyFit(); flat.reset(); globe.reset(); homed = true; renderPanel(); redraw(); return; }
       if (k === 'map') { applyMap(); renderPanel(); } else if (k === 'style' || k === 'base') { applyStyle(); redraw(); } else { rebuild(); renderPanel(); }
       return;
