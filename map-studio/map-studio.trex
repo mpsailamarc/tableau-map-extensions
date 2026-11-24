@@ -3,7 +3,7 @@
   <worksheet-extension id="com.demo.advancedmaps.mapstudio" extension-version="0.1.0">
     <default-locale>en_US</default-locale>
     <name resource-id="name"/>
-    <description>One map extension with layers: shapes from spatial fields (shapefiles), symbols, density heat maps, pie charts and flow arcs, on a flat map or a 3D globe</description>
+    <description>One map extension with a single layer: shapes from spatial fields (shapefiles), symbols, density heat maps, pie charts and flow arcs, on a flat map or a 3D globe</description>
     <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
     <min-api-version>1.11</min-api-version>
     <source-location>

@@ -1,4 +1,4 @@
-/* Map studio — one Tableau viz extension for many map types, built from layers (like Tableau's own map layers).
+/* Map studio — one Tableau viz extension for many map types. The worksheet version draws a single layer; the dashboard version (window.MS_DASHBOARD) stacks one layer per sheet.
    Marks card tiles (see map-studio.trex): Location, Destination, Size, Color. Geometry (a spatial field) goes on Detail.
    Everything else is configured per layer in the Layers panel: each layer has a type (shapes / symbols / pies / flow arcs),
    its own fields, colours and sizes. Several data sets can be combined into one sheet with a union and split into layers with a
@@ -742,8 +742,8 @@
     models.forEach(m => { if (m.L.on && m.ext) { ext = ext || { a: 180, b: -180, c: 90, d: -90 }; ext.a = Math.min(ext.a, m.ext.a); ext.b = Math.max(ext.b, m.ext.b); ext.c = Math.min(ext.c, m.ext.c); ext.d = Math.max(ext.d, m.ext.d); } });
     const total = models.reduce((a, m) => a + (m.L.on ? m.base.length : 0), 0);
     if (!layers.length && DASH) show('<b>Map studio (dashboard)</b><br>Add worksheets to this dashboard (they can be hidden), one per layer, with the fields it needs on <b>Detail</b>: a spatial field, or longitude and latitude, or origin and destination. Then open <b>Layers</b> and add a layer for each sheet.');
-    else if (!layers.length) show('<b>Map studio</b><br>Put a spatial field (e.g. Geometry) on <b>Detail</b>, or a longitude and latitude on <b>Location</b>, or open the <b>Layers</b> panel and add a layer. Several data sets can be combined with a union and split into layers.');
-    else if (!total) show('<b>Nothing to draw yet</b><br>' + models.map(m => esc(m.L.name) + ': ' + esc(m.msg || 'no matching rows')).join('<br>') + '<br>Open the Layers panel to choose fields.');
+    else if (!layers.length) show('<b>Map studio</b><br>Put a spatial field (e.g. Geometry) on <b>Detail</b>, or a longitude and latitude on <b>Location</b>, or open the <b>Layer</b> panel and choose a type.');
+    else if (!total) show('<b>Nothing to draw yet</b><br>' + models.map(m => esc(m.L.name) + ': ' + esc(m.msg || 'no matching rows')).join('<br>') + '<br>Open the panel to choose fields.');
     else show('');
     updateNote();
     if (!homed && (ext || G.sv !== 'fit')) { if (applyFit() !== false) { flat.reset(); globe.reset(); homed = true; } } else if (ext || G.sv !== 'fit') applyFit();
@@ -774,14 +774,15 @@
     for (const [n, s] of Object.entries(sheets)) if (!(s.cols || []).length && D.sheets[n] && D.sheets[n].cols.length) sheets[n] = { ...s, cols: D.sheets[n].cols };
     const cols = (d.cols && d.cols.length) || !d.rows || d.rows.length ? (d.cols || []) : D.cols;
     D = { rows: d.rows || [], enc: d.enc || {}, cols, preset: d.preset || null, sheets };
-    if (auto || !layers) { layers = autoLayers(); auto = true; }
+    if (auto || !layers || !layers.length) { layers = autoLayers(); auto = true; }
     else if (DASH) {          // saved layers stay as they are, but a sheet that has map fields now and no layer yet (it was empty or still loading when they were saved) gets one
       const have = new Set(layers.map(l => l.sheet)); let added = false;
       for (const L of autoLayers()) if (!have.has(L.sheet) && !G.dismissed.includes(L.id)) { layers.push(L); added = true; }
       if (added) persist();
     }
+    if (!DASH && layers.length > 1) layers = layers.slice(0, 1);      // the worksheet extension draws exactly one layer
     rebuild(); renderPanel();
-    if (!TX.demo && !layers.length) show('<b>No layers loaded</b><br>' + esc(diagText()) + '<br>Sheets seen: ' + (Object.keys(sheets).join(', ') || 'none') + '. Layers: 0. Open the Layers panel to add one.');
+    if (!TX.demo && !layers.length) show('<b>No layers loaded</b><br>' + esc(diagText()) + '<br>Sheets seen: ' + (Object.keys(sheets).join(', ') || 'none') + '. Layers: 0. Open the panel to choose a layer type.');
   }
 
   // ================= Layers panel =================
@@ -806,7 +807,7 @@
     if (DASH) {
       const sn = Object.keys(D.sheets);
       h += '<label>Data from sheet<select data-l="' + L.id + '" data-k="sheet"><option value="">(choose a sheet)</option>' + sn.map(n => '<option value="' + esc(n) + '"' + (n === L.sheet ? ' selected' : '') + '>' + esc(trunc(n, 26)) + '</option>').join('') + (L.sheet && !sn.includes(L.sheet) ? '<option value="' + esc(L.sheet) + '" selected>' + esc(trunc(L.sheet, 26)) + ' (missing)</option>' : '') + '</select></label>';
-    } else if (G.lf) {
+    } else if (G.lf && TX.demo) {
       const vals = [...new Set(D.rows.map(r => str(r[G.lf])))].slice(0, 200).sort();
       h += '<label>Rows where ' + esc(trunc(G.lf, 14)) + ' =<select data-l="' + L.id + '" data-k="lv"><option value="">(all rows)</option>' + vals.map(v => '<option value="' + esc(v) + '"' + (v === L.lv ? ' selected' : '') + '>' + esc(trunc(v, 26)) + '</option>').join('') + '</select></label>';
     }
@@ -848,20 +849,20 @@
       '<label class="chk"><input type="checkbox" data-g="base"' + (G.base ? ' checked' : '') + '>&nbsp;Show country base map</label>' +
       '<label title="Where the map opens, and where the home button goes">Start view<select data-g="sv"><option value="fit"' + (G.sv === 'fit' ? ' selected' : '') + '>Fit to the data</option><option value="world"' + (G.sv === 'world' ? ' selected' : '') + '>Whole world</option><option value="fixed"' + (G.sv === 'fixed' ? ' selected' : '') + '>Saved view</option></select></label>' +
       '<div class="sv"><button type="button" data-act="setview" title="Pan and zoom first, then press this">Use current view as start</button>' + (G.sv === 'fixed' && !G.fixed ? ' <span class="sub">none saved yet</span>' : '') + '</div>' +
-      (DASH ? '' : '<label title="A column that says which layer each row belongs to, e.g. after a union of several tables">Layer column<select data-g="lf"><option value="">(none)</option>' + D.cols.filter(nonSpatial).map(c => '<option value="' + esc(c.name) + '"' + (c.name === G.lf ? ' selected' : '') + '>' + esc(trunc(c.name, 26)) + '</option>').join('') + '</select></label>') + '</div>';
+      (true ? '' : '<label title="A column that says which layer each row belongs to, e.g. after a union of several tables">Layer column<select data-g="lf"><option value="">(none)</option>' + D.cols.filter(nonSpatial).map(c => '<option value="' + esc(c.name) + '"' + (c.name === G.lf ? ' selected' : '') + '>' + esc(trunc(c.name, 26)) + '</option>').join('') + '</select></label>') + '</div>';
     h += '<div class="grp"><div class="lh">Time line <span class="sub">' + (T.steps.length > 1 ? '(' + T.steps.length + ' steps)' : '(no time field in use)') + '</span></div>' + (T.steps.length > 1 ?
       '<label>Show<select data-g="tm"><option value="period"' + (G.tm === 'period' ? ' selected' : '') + '>This step only</option><option value="cum"' + (G.tm === 'cum' ? ' selected' : '') + '>Everything up to this step</option><option value="trail"' + (G.tm === 'trail' ? ' selected' : '') + '>The last few steps</option></select></label>' +
       (G.tm === 'trail' ? '<label>Steps kept<input type="range" data-g="tn" min="2" max="12" step="1" value="' + G.tn + '"></label>' : '') +
       '<label>Step by<select data-g="tg"><option value="exact"' + (G.tg === 'exact' ? ' selected' : '') + '>Each date value</option><option value="year"' + (G.tg === 'year' ? ' selected' : '') + '>Year</option><option value="month"' + (G.tg === 'month' ? ' selected' : '') + '>Month</option><option value="day"' + (G.tg === 'day' ? ' selected' : '') + '>Day</option></select></label>' +
       '<label>Speed<input type="range" data-g="tsp" min="0.25" max="6" step="0.25" value="' + G.tsp + '"></label><label class="chk"><input type="checkbox" data-g="tloop"' + (G.tloop ? ' checked' : '') + '>&nbsp;Loop</label>'
-      : '<div class="sub">Choose a date field under <b>Time field</b> in a layer to get a play button.</div>') + '</div>';
-    h += '<div class="lh">Layers <span class="sub">(top of the list is drawn last)</span></div>';
+      : '<div class="sub">Choose a date field under <b>Time field</b> in the layer to get a play button.</div>') + '</div>';
+    h += '<div class="lh">' + (DASH ? 'Layers <span class="sub">(top of the list is drawn last)</span>' : 'Layer') + '</div>';
     [...layers].reverse().forEach(L => {
-      h += '<details class="lyr" data-id="' + L.id + '"' + (openIds.has(L.id) ? ' open' : '') + '><summary><button type="button" data-act="toggle" class="chev" title="Show / hide the settings"></button><input type="checkbox" data-l="' + L.id + '" data-k="on" title="Show / hide"' + (L.on ? ' checked' : '') + '> <input class="nm" type="text" data-l="' + L.id + '" data-k="name" value="' + esc(L.name) + '"> ' +
-        '<button type="button" data-act="up" data-l="' + L.id + '" title="Draw later (on top)">&uarr;</button><button type="button" data-act="down" data-l="' + L.id + '" title="Draw earlier">&darr;</button><button type="button" data-act="del" data-l="' + L.id + '" title="Remove layer">&times;</button></summary><div class="lb"><div class="two"><label class="chk" title="Show a legend card for this layer"><input type="checkbox" data-l="' + L.id + '" data-k="st.legend"' + (L.st.legend !== false ? ' checked' : '') + '>&nbsp;Legend card</label><label class="chk" title="Off: the layer is only drawn. Hover and tooltips ignore it"><input type="checkbox" data-l="' + L.id + '" data-k="st.active"' + (L.st.active !== false ? ' checked' : '') + '>&nbsp;Interactive</label></div>' + layerBody(L) + '</div></details>';
+      h += '<details class="lyr" data-id="' + L.id + '"' + (openIds.has(L.id) || !DASH ? ' open' : '') + '><summary><button type="button" data-act="toggle" class="chev" title="Show / hide the settings"></button><input type="checkbox" data-l="' + L.id + '" data-k="on" title="Show / hide"' + (L.on ? ' checked' : '') + '> <input class="nm" type="text" data-l="' + L.id + '" data-k="name" value="' + esc(L.name) + '"> ' +
+(DASH ? '<button type="button" data-act="up" data-l="' + L.id + '" title="Draw later (on top)">&uarr;</button><button type="button" data-act="down" data-l="' + L.id + '" title="Draw earlier">&darr;</button><button type="button" data-act="del" data-l="' + L.id + '" title="Remove layer">&times;</button>' : '') + '</summary><div class="lb"><div class="two"><label class="chk" title="Show a legend card for this layer"><input type="checkbox" data-l="' + L.id + '" data-k="st.legend"' + (L.st.legend !== false ? ' checked' : '') + '>&nbsp;Legend card</label><label class="chk" title="Off: the layer is only drawn. Hover and tooltips ignore it"><input type="checkbox" data-l="' + L.id + '" data-k="st.active"' + (L.st.active !== false ? ' checked' : '') + '>&nbsp;Interactive</label></div>' + layerBody(L) + '</div></details>';
     });
-    h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
-    if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'Layers were set up automatically from the Marks card. Change anything here to take control.') + '</div>';
+    if (DASH || !layers.length) h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
+    if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'The layer was set up automatically from the Marks card. Change anything here to take control.') + '</div>';
     const me = [...document.scripts].find(s => /map-studio\.js/.test(s.src)), ver = me && (me.src.match(/[?&]v=(\d+)/) || [])[1];
     h += '<div class="sv"><button type="button" data-act="reload" title="Save your settings and download the latest version of this extension. Then use the Reload option in Tableau">Save &amp; fetch latest</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div><div class="sub" id="diag">' + esc(diagText()) + '</div>';
     pbody.innerHTML = h; pbody.scrollTop = sc;
