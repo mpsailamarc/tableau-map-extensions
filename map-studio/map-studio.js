@@ -770,7 +770,11 @@
   function onData(d) {
     if (d.error) { show('<b>Something went wrong</b><br>' + esc(d.error)); return; }
     if (!loaded) { loaded = true; if (!TX.demo) loadSettings(); else if (d.layerField) G.lf = d.layerField; applyStyle(); applyMap(); }
-    D = { rows: d.rows || [], enc: d.enc || {}, cols: d.cols || [], preset: d.preset || null, sheets: d.sheets || {} };
+    // A filter can leave a sheet (or the whole viz) with no rows, and then Tableau may report no columns either. Keep the last known columns so the layer's fields and choices don't vanish.
+    const sheets = d.sheets || {};
+    for (const [n, s] of Object.entries(sheets)) if (!(s.cols || []).length && D.sheets[n] && D.sheets[n].cols.length) sheets[n] = { ...s, cols: D.sheets[n].cols };
+    const cols = (d.cols && d.cols.length) || !d.rows || d.rows.length ? (d.cols || []) : D.cols;
+    D = { rows: d.rows || [], enc: d.enc || {}, cols, preset: d.preset || null, sheets };
     if (auto || !layers) { layers = autoLayers(); auto = true; }
     rebuild(); renderPanel();
   }

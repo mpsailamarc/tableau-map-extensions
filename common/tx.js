@@ -44,6 +44,9 @@
       }
     }
     await reader.releaseAsync();
+    if (!cols.length) {          // a filter left no rows, so there was no page to read the columns from: ask for the column list on its own
+      try { const t = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 }); cols = t.columns.map(c => ({ name: c.fieldName, dataType: c.dataType })); } catch (e) { /* the extension keeps the last known columns instead */ }
+    }
     return { rows, cols };
   }
 
