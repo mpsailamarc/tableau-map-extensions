@@ -349,7 +349,7 @@
       symPath(c, st.shape, P[0], P[1], s); c.globalAlpha = st.alpha * dim(m, it); c.fillStyle = colOf(m, it) || T.dflt; c.fill(); c.globalAlpha = 1;
       const hollow = colOf(m, it) === 'transparent';
       c.strokeStyle = st.ocolor || (hollow ? (G.style === 'dark' ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.75)') : 'rgba(0,0,0,.45)'); c.lineWidth = hover && hover.it === it ? 2 : hollow ? 1.3 : 0.6; c.stroke();
-      if (st.labels && it.name && env.z >= 2) label(c, it.name, P[0] + s + 3, P[1] + 4);
+      if (st.labels && it.name) label(c, it.name, P[0] + s + 3, P[1] + 4);
     }
   }
   function hitSymbols(x, y, m) {
@@ -395,7 +395,7 @@
       c.beginPath(); c.ellipse(Tp[0], Tp[1], hw, ry, rot, 0, 6.3); c.fillStyle = shade(col, 1.3); c.fill();      // lit top
       c.strokeStyle = st.ocolor || (hot ? '#fff' : 'rgba(0,0,0,.4)'); c.lineWidth = hot ? 2 : 0.7; c.stroke();
       c.globalAlpha = 1;
-      if (st.labels && it.name && env.z >= 2) label(c, it.name, Tp[0] + hw + 3, Tp[1] + 4);
+      if (st.labels) { const tx = it.name || (it.s != null ? fmt(it.s) : ''); if (tx) label(c, tx, Tp[0] + hw + 3, Tp[1] + 4); }      // labels are simply on or off, at any zoom
     }
   }
   function hitBars(x, y, m) {
@@ -900,7 +900,7 @@
     } else if (L.type === 'bars') {
       if (L.st.bh == null) L.st.bh = 1; if (L.st.bw == null) L.st.bw = 1;
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Location name', nonSpatial) + fsel(L, 'height', 'Height by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
-        palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'bh', 'Max height', 0.2, 3, 0.05) + rng(L, 'bw', 'Bar width', 0.3, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
+        palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'bh', 'Max height', 0.2, 3, 0.05) + rng(L, 'bw', 'Bar width', 0.3, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Show labels (name, or the height value if there is no name)');
     } else if (L.type === 'density') {
       const st = L.st; if (st.radius == null) st.radius = 1; if (st.intensity == null) st.intensity = 1; if (!DRAMPS[st.dramp]) st.dramp = 'fire';
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'weight', 'Weight by (optional)', numeric) + fsel(L, 'time', 'Time field', timeable) +
