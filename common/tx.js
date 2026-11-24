@@ -51,8 +51,9 @@
   }
 
   const readyFns = [];
+  const stage = { s: 'page loaded', at: Date.now() }; const setStage = t => { stage.s = t; stage.at = Date.now(); };
   const TX = {
-    demo, parseCSV, cell,
+    demo, parseCSV, cell, stage,
     /* run fn once the Extensions API is initialised (saved settings are only readable from then on) */
     ready(fn) { readyFns.push(fn); },
     async fetchCSV(path) { return parseCSV(await (await fetch(path)).text()); },
@@ -91,9 +92,9 @@
     /* dashboard extension: onData({ sheets: { "<sheet name>": { rows, cols } } }) for every sheet on the dashboard, now and whenever one changes */
     async startDashboard(onData, demoLoader) {
       if (demo) { onData(await demoLoader()); return; }
-      try { await tableau.extensions.initializeAsync(); }
+      setStage('waiting for Tableau to initialise the extension'); try { await tableau.extensions.initializeAsync(); }
       catch (err) { onData({ error: 'Could not initialise the Tableau Extensions API: ' + err }); return; }
-      TX.settings.restore();
+      setStage('initialised, reading the sheets'); TX.settings.restore();
       readyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
       const dash = tableau.extensions.dashboardContent.dashboard;
       let busy = false, again = false;
@@ -115,10 +116,10 @@
     },
     async start(onData, demoLoader) {
       if (demo) { onData(await demoLoader()); return; }
-      try {
+      setStage('waiting for Tableau to initialise the extension'); try {
         await tableau.extensions.initializeAsync();
       } catch (err) { onData({ error: 'Could not initialise the Tableau Extensions API: ' + err }); return; }
-      TX.settings.restore();
+      setStage('initialised, reading the sheets'); TX.settings.restore();
       readyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
       const ws = tableau.extensions.worksheetContent.worksheet;
       let busy = false, again = false;

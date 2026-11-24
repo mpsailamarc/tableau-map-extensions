@@ -965,5 +965,9 @@
 
   // ================= go =================
   applyStyle(); applyMap();
+  if (!TX.demo) {
+    show('Connecting to Tableau…');
+    const t0 = Date.now(), wd = setInterval(() => { if (loaded) { clearInterval(wd); return; } if (Date.now() - t0 > 6000) show('<b>Still waiting for Tableau</b><br>Stage: ' + esc(TX.stage.s) + ' (' + Math.round((Date.now() - TX.stage.at) / 1000) + ' s). If this stays, Tableau did not reconnect the extension after the reload: close and reopen the workbook, or use the extension\'s own Reload in Tableau.'); }, 1000);
+  }
   (DASH ? TX.startDashboard : TX.start)(onData, demoLoader);
 })();
