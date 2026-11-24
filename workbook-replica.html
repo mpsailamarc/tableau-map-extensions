@@ -3198,16 +3198,15 @@ window.PLACES=[["Adelaide",138.6,-34.933],["Brisbane",153.02,-27.469],["Cairns",
 
   // ---------------- navigation (buttons inside the dashboard) ----------------
   const NAVNAME = { 'Cyclones': 'Cyclones', 'Density of Tornadoes': 'Tornadoes', 'Flight Path': 'Flight Path', 'World Indicators - 3D bars': 'World Indicators', 'Tectonic Plates, Earthquakes and Volcanic Eruption': 'Tectonic Plates' };
-  const ORDER = ['Cyclones', 'Density of Tornadoes', 'Flight Path', 'World Indicators - 3D bars', 'Tectonic Plates, Earthquakes and Volcanic Eruption'];
+  const ORDER = ['Tectonic Plates, Earthquakes and Volcanic Eruption', 'Cyclones', 'Density of Tornadoes', 'Flight Path', 'World Indicators - 3D bars'];
   META.dashboards.sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
   const isLight = c => { const h = (c || '#fff').replace('#', ''), v = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16)); return (v[0] * 299 + v[1] * 587 + v[2] * 114) / 1000 > 150; };
   function open(D) {
     if (live) { live.teardown(); live = null; } stage.innerHTML = '';
     const i = META.dashboards.indexOf(D);
-    try { localStorage.setItem('replica-tab', String(i)); } catch (e) { /* ignore */ }
     mountDashboard(D); document.title = D.name;
   }
-  let start = 0; try { const v = +localStorage.getItem('replica-tab'); if (META.dashboards[v]) start = v; } catch (e) { /* ignore */ }
+  let start = 0;      // always open on the first tab
   const q = new URLSearchParams(location.search).get('tab'); if (q != null && META.dashboards[+q]) start = +q;
   $('loading').remove();
   open(META.dashboards[start]);
