@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.demo.advancedmaps.piesymbolmap" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>Symbol map where every location is a pie chart (pie size = total, slices = a dimension)</description>
+    <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://mpsailamarc.github.io/tableau-map-extensions/pie-symbol-map/index.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+    <encoding id="location">
+      <display-name>Location</display-name>
+      <data-spec>
+        <data-type>string</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>discrete-dimension</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Country name or ISO3 code: where each pie is placed</tooltip>
+    </encoding>
+    <encoding id="slice">
+      <display-name>Slice</display-name>
+      <data-spec>
+        <data-type>string</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>discrete-dimension</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Dimension that splits each pie into slices (e.g. Medal)</tooltip>
+    </encoding>
+    <encoding id="value">
+      <display-name>Value</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Measure that sizes each slice; pie size is the total</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Pie charts as symbols</text>
+    </resource>
+  </resources>
+</manifest>

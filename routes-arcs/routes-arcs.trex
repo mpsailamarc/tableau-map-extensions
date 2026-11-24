@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.demo.advancedmaps.routesarcs" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>Routes between pairs of places drawn as curved arcs on a flat map or a 3D globe</description>
+    <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://mpsailamarc.github.io/tableau-map-extensions/routes-arcs/index.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+    <encoding id="origin">
+      <display-name>Origin</display-name>
+      <tooltip>Where each route starts: a place name, and/or its longitude and latitude (up to 3 fields)</tooltip>
+    </encoding>
+    <encoding id="destination">
+      <display-name>Destination</display-name>
+      <tooltip>Where each route ends: a place name, and/or its longitude and latitude (up to 3 fields)</tooltip>
+    </encoding>
+    <encoding id="width">
+      <display-name>Width</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Measure that sets the line width</tooltip>
+    </encoding>
+    <encoding id="color">
+      <display-name>Color</display-name>
+      <fields max-count="1"/>
+      <tooltip>Dimension: one colour per member. Measure: colour ramp</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Routes as curved arcs</text>
+    </resource>
+  </resources>
+</manifest>

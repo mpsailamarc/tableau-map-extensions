@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.demo.advancedmaps.symbolmap" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>Symbol map with a choice of symbol shape; size and colour driven by measures</description>
+    <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://mpsailamarc.github.io/tableau-map-extensions/symbol-map/index.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+    <encoding id="lon">
+      <display-name>Longitude</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Longitude of each mark</tooltip>
+    </encoding>
+    <encoding id="lat">
+      <display-name>Latitude</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Latitude of each mark</tooltip>
+    </encoding>
+    <encoding id="size">
+      <display-name>Size</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Measure that sets the symbol size</tooltip>
+    </encoding>
+    <encoding id="color">
+      <display-name>Color</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Measure that sets the symbol colour</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Choice of symbol</text>
+    </resource>
+  </resources>
+</manifest>

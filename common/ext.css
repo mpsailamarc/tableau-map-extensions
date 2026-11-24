@@ -1,0 +1,35 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: #dbe6ea;
+  font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #222; }
+#content { position: fixed; inset: 0; }
+canvas { display: block; cursor: grab; touch-action: none; }
+canvas.drag { cursor: grabbing; }
+.tip { position: absolute; display: none; pointer-events: none; z-index: 5; max-width: 280px;
+  background: rgba(255,255,255,.97); border: 1px solid rgba(0,0,0,.25); border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2); padding: 6px 9px; line-height: 1.5; }
+.tip b { display: block; font-size: 13px; margin-bottom: 2px; }
+.tip .k { color: #666; }
+.zoomctl { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 2px; z-index: 3; }
+.zoomctl button { width: 26px; height: 26px; border: 1px solid rgba(0,0,0,.3); background: rgba(255,255,255,.92);
+  border-radius: 4px; font-size: 15px; line-height: 1; cursor: pointer; color: #333; padding: 0; }
+.zoomctl button:hover { background: #fff; }
+.hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; text-align: center;
+  background: rgba(255,255,255,.95); border: 1px solid rgba(0,0,0,.2); border-radius: 8px; padding: 14px 18px;
+  max-width: 340px; line-height: 1.5; box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+.hint b { font-size: 13px; }
+.hint[hidden] { display: none; }
+.ctl { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  justify-content: flex-end; background: rgba(255,255,255,.88); border: 1px solid rgba(0,0,0,.18); border-radius: 6px; padding: 5px 9px; }
+.ctl label { display: flex; gap: 5px; align-items: center; color: #444; }
+.ctl select, .ctl input[type=range] { font-size: 12px; }
+.ctl input[type=range] { width: 80px; }
+.note { position: absolute; left: 8px; bottom: 4px; z-index: 2; font-size: 10.5px; color: #4a5a60; max-width: 60%; pointer-events: none; }
+
+/* collapsible options panel (routes extension) */
+details.ctl { display: block; padding: 0; }
+details.ctl > summary { cursor: pointer; padding: 5px 10px; font-weight: 600; color: #333; list-style: none; user-select: none; }
+details.ctl > summary::-webkit-details-marker { display: none; }
+details.ctl > summary::before { content: "\2699\00a0"; }
+details.ctl .body { display: flex; flex-direction: column; gap: 7px; padding: 4px 10px 9px; align-items: stretch; min-width: 190px; }
+details.ctl .body label { justify-content: space-between; }
+details.ctl .body input[type=checkbox] { margin: 0; }
+details.ctl .body .chk { justify-content: flex-start; }

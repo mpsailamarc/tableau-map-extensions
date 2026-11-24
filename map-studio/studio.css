@@ -1,0 +1,23 @@
+/* Layers panel */
+details.studio { max-width: 270px; }
+details.studio .body { max-height: calc(100vh - 70px); overflow-y: auto; gap: 6px; min-width: 240px; }
+details.studio label { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #444; }
+details.studio select, details.studio input[type=text] { font-size: 12px; max-width: 150px; }
+details.studio input[type=range] { width: 100px; }
+details.studio .grp { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(0,0,0,.12); }
+details.studio .lh { font-weight: 600; margin-top: 2px; }
+details.studio .sub { font-weight: 400; color: #777; font-size: 10.5px; }
+details.studio details.lyr { border: 1px solid rgba(0,0,0,.18); border-radius: 5px; background: rgba(255,255,255,.7); }
+details.studio details.lyr > summary { display: flex; align-items: center; gap: 4px; padding: 4px 6px; cursor: pointer; list-style: none; }
+details.studio details.lyr > summary::-webkit-details-marker { display: none; }
+details.studio button.chev { border: 0; background: transparent; width: 14px; padding: 0; color: #555; }
+details.studio button.chev::before { content: "\25B8"; }
+details.studio details.lyr[open] button.chev::before { content: "\25BE"; }
+details.studio details.lyr > summary .nm { flex: 1; min-width: 0; max-width: none; border: 1px solid transparent; background: transparent; padding: 1px 3px; font-weight: 600; }
+details.studio details.lyr > summary .nm:hover, details.studio details.lyr > summary .nm:focus { border-color: rgba(0,0,0,.25); background: #fff; }
+details.studio button { font-size: 12px; padding: 0 5px; line-height: 18px; cursor: pointer; border: 1px solid rgba(0,0,0,.25); background: #fff; border-radius: 3px; }
+details.studio .lb { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px 8px; border-top: 1px solid rgba(0,0,0,.1); }
+details.studio .add { display: flex; gap: 6px; }
+details.studio .add select { flex: 1; max-width: none; }
+details.studio input[type=color] { width: 28px; height: 20px; padding: 0; border: 1px solid rgba(0,0,0,.3); }
+details.studio .sv { margin-top: -2px; }

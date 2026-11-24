@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <worksheet-extension id="com.demo.advancedmaps.mapstudio" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>One map extension with layers: shapes from spatial fields (shapefiles), symbols, pie charts and flow arcs, on a flat map or a 3D globe</description>
+    <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://mpsailamarc.github.io/tableau-map-extensions/map-studio/index.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+    <encoding id="location">
+      <display-name>Location</display-name>
+      <tooltip>Where marks sit: a place name, and/or longitude and latitude (up to 3 fields). For flows this is the origin</tooltip>
+    </encoding>
+    <encoding id="destination">
+      <display-name>Destination</display-name>
+      <tooltip>Flow arcs only: where each route ends (name and/or longitude and latitude)</tooltip>
+    </encoding>
+    <encoding id="size">
+      <display-name>Size</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip>Measure: symbol size, pie size or line width</tooltip>
+    </encoding>
+    <encoding id="color">
+      <display-name>Color</display-name>
+      <fields max-count="1"/>
+      <tooltip>Dimension: one colour per member (or pie slices). Measure: colour ramp</tooltip>
+    </encoding>
+  </worksheet-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Map studio</text>
+    </resource>
+  </resources>
+</manifest>
