@@ -57,6 +57,30 @@
       get(k, dflt) { try { const v = tableau.extensions.settings.get(k); return v == null ? dflt : v; } catch (e) { return dflt; } },
       set(k, v) { try { tableau.extensions.settings.set(k, v); tableau.extensions.settings.saveAsync().catch(() => {}); } catch (e) { /* not available in demo mode */ } }
     },
+    /* dashboard extension: onData({ sheets: { "<sheet name>": { rows, cols } } }) for every sheet on the dashboard, now and whenever one changes */
+    async startDashboard(onData, demoLoader) {
+      if (demo) { onData(await demoLoader()); return; }
+      try { await tableau.extensions.initializeAsync(); }
+      catch (err) { onData({ error: 'Could not initialise the Tableau Extensions API: ' + err }); return; }
+      readyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+      const dash = tableau.extensions.dashboardContent.dashboard;
+      let busy = false, again = false;
+      const refresh = async () => {
+        if (busy) { again = true; return; }
+        busy = true;
+        try {
+          const sheets = {};
+          for (const ws of dash.worksheets) {
+            try { sheets[ws.name] = await getRows(ws); } catch (err) { sheets[ws.name] = { rows: [], cols: [], error: String(err) }; }
+          }
+          onData({ sheets });
+        } catch (err) { onData({ error: String(err) }); }
+        busy = false;
+        if (again) { again = false; refresh(); }
+      };
+      dash.worksheets.forEach(ws => ws.addEventListener(tableau.TableauEventType.SummaryDataChanged, refresh));
+      refresh();
+    },
     async start(onData, demoLoader) {
       if (demo) { onData(await demoLoader()); return; }
       try {

@@ -99,6 +99,7 @@
       this.S0 = Math.min(W / 1.0, H / (y1 - y0));
       this.homeY = (y0 + y1) / 2;
       if (first || this.cy === 0) this.cy = this.homeY;
+      if (!this._sized) { this._sized = true; if (this.opts.onSized) setTimeout(() => this.opts.onSized(this), 0); }     // first time the map has a real size
       if (this.cv.style.display === 'none') return;
       this.draw();
     }

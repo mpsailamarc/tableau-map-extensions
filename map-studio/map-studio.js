@@ -28,7 +28,9 @@
 
   // ================= state =================
   const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6 };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
-  let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null };
+  // Two ways to get data: as a worksheet extension (the one sheet it sits on) or as a dashboard extension (one sheet per layer).
+  const DASH = !!window.MS_DASHBOARD;
+  let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null, sheets: {} };
   let models = [], hover = null, phase = 0, homed = false, ext = null, raf = 0, saveT = 0;
 
   // ================= cell + column helpers =================
@@ -36,8 +38,9 @@
   const isNull = c => { const v = raw(c); return v == null || v === ''; };
   const num = c => { const v = raw(c); if (v == null || v === '') return null; const n = Number(v); return isFinite(n) ? n : null; };
   const str = c => (c == null ? '' : String(c.formattedValue != null ? c.formattedValue : raw(c)));
-  const colInfo = n => D.cols.find(c => c.name === n);
-  const spatialCols = () => D.cols.filter(c => c.dataType === 'spatial').map(c => c.name);
+  const ctxOf = L => (DASH ? (D.sheets[L && L.sheet] || { rows: [], cols: [], enc: {} }) : D);      // the rows / columns a layer reads
+  const colInfo = (n, cols) => (cols || D.cols).find(c => c.name === n);
+  const spatialCols = cx => (cx || D).cols.filter(c => c.dataType === 'spatial').map(c => c.name);
   const isNumCol = c => c.dataType === 'int' || c.dataType === 'float';
   const isMeasure = n => /^(SUM|AVG|MIN|MAX|MEDIAN|CNT|CNTD|AGG|COUNT|COUNTD|STDEV|VAR)\(/i.test(n || '');
   const bare = n => String(n).replace(/^(SUM|AVG|MIN|MAX|ATTR|MEDIAN|CNT|CNTD|AGG|COUNT|COUNTD|COLLECT)\((.*)\)$/i, '$2');
@@ -51,7 +54,7 @@
       else if (rest.length === 2 && names.length === 2) { p.lon = rest[0]; p.lat = rest[1]; }
       else p.name = rest[0] || null;
     } else p.name = rest[0] || null;
-    return p;
+    p.rest = rest; return p;
   }
 
   // ================= layers =================
@@ -60,8 +63,30 @@
     return { id: id || 'L' + Date.now().toString(36) + (uid++), name: name || TYPES[type], type, on: true, lv: '', f: {},
       st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false } };
   }
+  // Dashboard mode has no Marks card tiles, so defaults are guessed from the names and types of a sheet's columns.
+  function guess(cx) {
+    const C = cx.cols, names = C.map(c => c.name), nonSp = C.filter(c => c.dataType !== 'spatial');
+    const lonC = names.filter(isLon), latC = names.filter(isLat);
+    const oRe = /orig|from|source|depart/i, dRe = /dest|(^|[^a-z])to([^a-z]|$)|target|arriv/i;
+    const oCols = nonSp.map(c => c.name).filter(n => oRe.test(n)), dCols = nonSp.map(c => c.name).filter(n => dRe.test(n) && !oCols.includes(n));
+    const og = classify(oCols), dg = classify(dCols);
+    const used = new Set([...oCols, ...dCols]);
+    const meas = C.filter(c => isNumCol(c) && !isLon(c.name) && !isLat(c.name)).map(c => c.name);
+    const plain = C.filter(c => c.dataType === 'string' && !used.has(c.name)).map(c => c.name);
+    return { spatial: spatialCols(cx), lon: lonC.filter(n => !used.has(n))[0] || lonC[0] || null, lat: latC.filter(n => !used.has(n))[0] || latC[0] || null, og, dg, meas, plain,
+      hasArcs: !!((og.name || og.lon) && (dg.name || dg.lon)) };
+  }
   function autoLayers() {
     if (D.preset) return JSON.parse(JSON.stringify(D.preset));
+    if (DASH) {
+      const out = [];
+      for (const [name, cx] of Object.entries(D.sheets)) {
+        const g = guess(cx); let type = null;
+        if (g.spatial.length) type = 'shapes'; else if (g.hasArcs) type = 'arcs'; else if (g.lon && g.lat) type = 'symbols';
+        if (type) { const L = newLayer(type, name, 'auto-' + name); L.sheet = name; out.push(L); }
+      }
+      return out;
+    }
     const e = D.enc, out = [];
     const loc = classify((e.location || []).map(x => x.name));
     if (spatialCols().length) out.push(newLayer('shapes', 'Shapes', 'auto-shapes'));
@@ -70,19 +95,28 @@
     else if (e.location && loc.name && !out.length) out.push(newLayer('pies', 'Pies', 'auto-pies'));
     return out;
   }
-  function fieldsOf(L) {                // resolve every field a layer uses: explicit choice, else the Marks card tile
-    const f = L.f, e = D.enc, nm = a => (a && a[0] ? a[0].name : null);
+  function fieldsOf(L) {                // resolve every field a layer uses: explicit choice, else the Marks card tile (or a guess in dashboard mode)
+    const f = L.f, cx = ctxOf(L), e = cx.enc || {}, nm = a => (a && a[0] ? a[0].name : null);
     const pick = (k, d) => (f[k] === '-' ? null : (f[k] || d || null));
+    if (DASH) {
+      const g = guess(cx);
+      switch (L.type) {
+        case 'shapes': return { geom: pick('geom', g.spatial[0]), name: pick('name', g.plain[0]), color: pick('color', g.meas[0] || g.plain[1]), size: pick('size', null) };
+        case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]) };
+        case 'pies': return { name: pick('name', g.plain[0]), lon: pick('lon', null), lat: pick('lat', null), slice: pick('slice', g.plain[1]), value: pick('value', g.meas[0]) };
+        default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]) };
+      }
+    }
     const loc = classify((e.location || []).map(x => x.name)), dst = classify((e.destination || []).map(x => x.name));
     const col = nm(e.color), siz = nm(e.size);
     switch (L.type) {
-      case 'shapes': return { geom: pick('geom', spatialCols()[0]), name: pick('name', loc.name), color: pick('color', col), size: pick('size', siz) };
+      case 'shapes': return { geom: pick('geom', spatialCols(cx)[0]), name: pick('name', loc.name), color: pick('color', col), size: pick('size', siz) };
       case 'symbols': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), size: pick('size', siz), color: pick('color', col) };
       case 'pies': return { name: pick('name', loc.name), lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), slice: pick('slice', col), value: pick('value', siz) };
       default: return { oname: pick('oname', loc.name), olon: pick('olon', loc.lon), olat: pick('olat', loc.lat), dname: pick('dname', dst.name), dlon: pick('dlon', dst.lon), dlat: pick('dlat', dst.lat), width: pick('width', siz), color: pick('color', col) };
     }
   }
-  const rowsFor = L => (G.lf && L.lv ? D.rows.filter(r => str(r[G.lf]) === L.lv) : D.rows);
+  const rowsFor = L => { const cx = ctxOf(L); return !DASH && G.lf && L.lv ? cx.rows.filter(r => str(r[G.lf]) === L.lv) : cx.rows; };
 
   // ================= colour =================
   function colorize(items, cellOf, field, st) {
@@ -106,7 +140,8 @@
 
   // ================= build one layer =================
   function build(L) {
-    const m = { L, f: fieldsOf(L), items: [], skipped: 0, leg: [], ext: null, msg: '' };
+    const m = { L, f: fieldsOf(L), cols: ctxOf(L).cols, items: [], skipped: 0, leg: [], ext: null, msg: '' };
+    if (DASH && !D.sheets[L.sheet]) { m.msg = 'choose which sheet feeds this layer'; return m; }
     try {
       ({ shapes: buildShapes, symbols: buildSymbols, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
     } catch (err) { m.msg = String(err && err.message || err); m.items = []; }
@@ -474,7 +509,7 @@
   function titleOf(m, it) {
     if (m.L.type === 'arcs') { const nm = n => n.label || n.lat.toFixed(2) + ', ' + n.lon.toFixed(2); return nm(it.a) + ' → ' + nm(it.b); }
     if (it.name) return it.name;
-    for (const k of Object.keys(it.row)) { const col = colInfo(k); if (col && col.dataType === 'string' && !isNull(it.row[k])) return str(it.row[k]); }
+    for (const k of Object.keys(it.row)) { const col = colInfo(k, m.cols); if (col && col.dataType === 'string' && !isNull(it.row[k])) return str(it.row[k]); }
     return m.L.name;
   }
   function tipHtml(m, it) {
@@ -482,10 +517,10 @@
       return '<b>' + esc(it.name) + '</b>' + m.pnames.filter(n => it.s.get(n)).map(n => '<span style="color:' + m.pcol.get(n) + '">&#9632;</span> ' + esc(n) + ': <b style="display:inline">' + fmt(it.s.get(n)) + '</b>').join('<br>') +
         (m.f.value ? '<br><span class="k">Total ' + esc(m.f.value) + ':</span> ' + fmt(it.n) : '');
     }
-    const hide = new Set(Object.values(m.f).filter(Boolean).filter(n => { const c = colInfo(n); return (c && c.dataType === 'spatial') || isLonOrLatUsed(m, n); }));
+    const hide = new Set(Object.values(m.f).filter(Boolean).filter(n => { const c = colInfo(n, m.cols); return (c && c.dataType === 'spatial') || isLonOrLatUsed(m, n); }));
     const title = titleOf(m, it), out = [];
     for (const k of Object.keys(it.row)) {
-      if (hide.has(k) || /\(generated\)$/.test(k) || isNull(it.row[k]) || (colInfo(k) || {}).dataType === 'spatial') continue;
+      if (hide.has(k) || /\(generated\)$/.test(k) || isNull(it.row[k]) || (colInfo(k, m.cols) || {}).dataType === 'spatial') continue;
       const t = str(it.row[k]); if (t === title) continue;
       out.push('<span class="k">' + esc(k) + ':</span> ' + esc(t));
     }
@@ -529,7 +564,7 @@
     }
     setHover(h); if (!h) { tipV.hideTip(); return; } tipV.showTip(tipHtml(h.m, h.it), e);
   }
-  const flat = new MapView(content, { wrap: true, draw: DRAW.flat, onHover });
+  const flat = new MapView(content, { wrap: true, draw: DRAW.flat, onHover, onSized: () => { if (!homed && models.length) rebuild(); } });
   const globe = new GlobeView(content, { draw: DRAW.globe, onHover });
   const active = () => (G.map === 'globe' ? globe : flat);
   function applyStyle() { const T = STYLE[G.style]; flat.theme = { bg: T.bg, land: T.land, stroke: T.stroke }; globe.setTheme(G.style); document.body.style.background = T.bg; flat.showLand = globe.showLand = G.base; }
@@ -555,10 +590,11 @@
   // ---- fit the views to the data ----
   const toLon = cx => ((cx * 360 - 180 + 540) % 360 + 360) % 360 - 180, toLat = cy => (2 * Math.atan(Math.exp(2 * Math.PI * (0.5 - cy))) - Math.PI / 2) / D2R;
   function applyFit() {
+    if (!flat.S0 || !flat.W) return false;          // the map has no size yet (the page is still being laid out): try again once it has
     const e = ext, f = G.fixed;
     if (G.sv === 'fixed' && f) {            // a view the user saved: lon, lat and how many degrees fit across the shorter side
       flat.setHome(f.lon); flat.setHomeView(mxOf(f.lon), myOf(Math.max(-84, Math.min(84, f.lat))), Math.max(1, Math.min(60, Math.min(flat.W, flat.H) * 360 / (flat.S0 * f.span))));
-      globe.setHome(f.lon, f.lat); globe.setHomeK(Math.max(0.6, Math.min(12, 57.3 / (0.45 * f.span)))); return;
+      globe.setHome(f.lon, f.lat); globe.setHomeK(Math.max(0.6, Math.min(12, 57.3 / (0.45 * f.span)))); return true;
     }
     if (G.sv === 'world' || !e || e.b - e.a > 300) { flat.setHome(10); flat.setHomeView(null); globe.setHome(10, 20); globe.setHomeK(1); }
     else {
@@ -568,6 +604,7 @@
       const ang = Math.max(0.02, Math.acos(Math.max(-1, Math.min(1, Math.sin(e.c * D2R) * Math.sin(lat * D2R) + Math.cos(e.c * D2R) * Math.cos(lat * D2R) * Math.cos((e.b - e.a) / 2 * D2R)))));
       globe.setHome(lon, lat); globe.setHomeK(Math.max(1, Math.min(12, 0.85 / Math.sin(Math.min(ang, 1.4)))));
     }
+    return true;
   }
 
   // ================= data =================
@@ -575,11 +612,12 @@
     models = layers.map(build); ext = null;
     models.forEach(m => { if (m.L.on && m.ext) { ext = ext || { a: 180, b: -180, c: 90, d: -90 }; ext.a = Math.min(ext.a, m.ext.a); ext.b = Math.max(ext.b, m.ext.b); ext.c = Math.min(ext.c, m.ext.c); ext.d = Math.max(ext.d, m.ext.d); } });
     const total = models.reduce((a, m) => a + (m.L.on ? m.items.length : 0), 0);
-    if (!layers.length) show('<b>Map studio</b><br>Put a spatial field (e.g. Geometry) on <b>Detail</b>, or a longitude and latitude on <b>Location</b>, or open the <b>Layers</b> panel and add a layer. Several data sets can be combined with a union and split into layers.');
+    if (!layers.length && DASH) show('<b>Map studio (dashboard)</b><br>Add worksheets to this dashboard (they can be hidden), one per layer, with the fields it needs on <b>Detail</b>: a spatial field, or longitude and latitude, or origin and destination. Then open <b>Layers</b> and add a layer for each sheet.');
+    else if (!layers.length) show('<b>Map studio</b><br>Put a spatial field (e.g. Geometry) on <b>Detail</b>, or a longitude and latitude on <b>Location</b>, or open the <b>Layers</b> panel and add a layer. Several data sets can be combined with a union and split into layers.');
     else if (!total) show('<b>Nothing to draw yet</b><br>' + models.map(m => esc(m.L.name) + ': ' + esc(m.msg || 'no matching rows')).join('<br>') + '<br>Open the Layers panel to choose fields.');
     else show('');
     note.textContent = models.map(m => m.L.on ? m.L.name + ' ' + fmt(m.items.length) + (m.skipped ? ' (' + m.skipped + ' skipped)' : '') : '').filter(Boolean).join(' · ');
-    if (!homed && (ext || G.sv !== 'fit')) { applyFit(); flat.reset(); globe.reset(); homed = true; } else if (ext || G.sv !== 'fit') applyFit();
+    if (!homed && (ext || G.sv !== 'fit')) { if (applyFit() !== false) { flat.reset(); globe.reset(); homed = true; } } else if (ext || G.sv !== 'fit') applyFit();
     tick(); redraw();
   }
   function show(msg) { hint.innerHTML = msg; hint.hidden = !msg; }
@@ -597,7 +635,7 @@
   function onData(d) {
     if (d.error) { show('<b>Something went wrong</b><br>' + esc(d.error)); return; }
     if (!loaded) { loaded = true; if (!TX.demo) loadSettings(); else if (d.layerField) G.lf = d.layerField; applyStyle(); applyMap(); }
-    D = { rows: d.rows, enc: d.enc || {}, cols: d.cols || [], preset: d.preset || null };
+    D = { rows: d.rows || [], enc: d.enc || {}, cols: d.cols || [], preset: d.preset || null, sheets: d.sheets || {} };
     if (auto || !layers) { layers = autoLayers(); auto = true; }
     rebuild(); renderPanel();
   }
@@ -605,9 +643,9 @@
   // ================= Layers panel =================
   const pbody = $('pbody'), openIds = new Set();
   const optsOf = (L, key, pred) => {
-    const dflt = fieldsOf({ ...L, f: {} })[key], cur = L.f[key] || '';
-    let h = '<option value=""' + (cur === '' ? ' selected' : '') + '>' + (dflt ? 'Marks card: ' + esc(trunc(dflt, 22)) : 'Marks card (not set)') + '</option><option value="-"' + (cur === '-' ? ' selected' : '') + '>(none)</option>';
-    const list = D.cols.filter(pred || (() => true)).map(c => c.name); if (cur && cur !== '-' && !list.includes(cur)) list.unshift(cur);
+    const dflt = fieldsOf({ ...L, f: {} })[key], cur = L.f[key] || '', lead = DASH ? 'Auto: ' : 'Marks card: ';
+    let h = '<option value=""' + (cur === '' ? ' selected' : '') + '>' + (dflt ? lead + esc(trunc(dflt, 22)) : (DASH ? 'Auto (none found)' : 'Marks card (not set)')) + '</option><option value="-"' + (cur === '-' ? ' selected' : '') + '>(none)</option>';
+    const list = ctxOf(L).cols.filter(pred || (() => true)).map(c => c.name); if (cur && cur !== '-' && !list.includes(cur)) list.unshift(cur);
     return h + list.map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(trunc(n, 28)) + '</option>').join('');
   };
   const any = () => true, numeric = c => isNumCol(c), spatial = c => c.dataType === 'spatial', nonSpatial = c => c.dataType !== 'spatial';
@@ -619,7 +657,10 @@
   function layerBody(L) {
     let h = '';
     h += '<label>Type<select data-l="' + L.id + '" data-k="type">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '"' + (L.type === k ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label>';
-    if (G.lf) {
+    if (DASH) {
+      const sn = Object.keys(D.sheets);
+      h += '<label>Data from sheet<select data-l="' + L.id + '" data-k="sheet"><option value="">(choose a sheet)</option>' + sn.map(n => '<option value="' + esc(n) + '"' + (n === L.sheet ? ' selected' : '') + '>' + esc(trunc(n, 26)) + '</option>').join('') + (L.sheet && !sn.includes(L.sheet) ? '<option value="' + esc(L.sheet) + '" selected>' + esc(trunc(L.sheet, 26)) + ' (missing)</option>' : '') + '</select></label>';
+    } else if (G.lf) {
       const vals = [...new Set(D.rows.map(r => str(r[G.lf])))].slice(0, 200).sort();
       h += '<label>Rows where ' + esc(trunc(G.lf, 14)) + ' =<select data-l="' + L.id + '" data-k="lv"><option value="">(all rows)</option>' + vals.map(v => '<option value="' + esc(v) + '"' + (v === L.lv ? ' selected' : '') + '>' + esc(trunc(v, 26)) + '</option>').join('') + '</select></label>';
     }
@@ -649,14 +690,14 @@
       '<label class="chk"><input type="checkbox" data-g="base"' + (G.base ? ' checked' : '') + '>&nbsp;Show country base map</label>' +
       '<label title="Where the map opens, and where the home button goes">Start view<select data-g="sv"><option value="fit"' + (G.sv === 'fit' ? ' selected' : '') + '>Fit to the data</option><option value="world"' + (G.sv === 'world' ? ' selected' : '') + '>Whole world</option><option value="fixed"' + (G.sv === 'fixed' ? ' selected' : '') + '>Saved view</option></select></label>' +
       '<div class="sv"><button type="button" data-act="setview" title="Pan and zoom first, then press this">Use current view as start</button>' + (G.sv === 'fixed' && !G.fixed ? ' <span class="sub">none saved yet</span>' : '') + '</div>' +
-      '<label title="A column that says which layer each row belongs to, e.g. after a union of several tables">Layer column<select data-g="lf"><option value="">(none)</option>' + D.cols.filter(nonSpatial).map(c => '<option value="' + esc(c.name) + '"' + (c.name === G.lf ? ' selected' : '') + '>' + esc(trunc(c.name, 26)) + '</option>').join('') + '</select></label></div>';
+      (DASH ? '' : '<label title="A column that says which layer each row belongs to, e.g. after a union of several tables">Layer column<select data-g="lf"><option value="">(none)</option>' + D.cols.filter(nonSpatial).map(c => '<option value="' + esc(c.name) + '"' + (c.name === G.lf ? ' selected' : '') + '>' + esc(trunc(c.name, 26)) + '</option>').join('') + '</select></label>') + '</div>';
     h += '<div class="lh">Layers <span class="sub">(top of the list is drawn last)</span></div>';
     [...layers].reverse().forEach(L => {
       h += '<details class="lyr" data-id="' + L.id + '"' + (openIds.has(L.id) ? ' open' : '') + '><summary><button type="button" data-act="toggle" class="chev" title="Show / hide the settings"></button><input type="checkbox" data-l="' + L.id + '" data-k="on" title="Show / hide"' + (L.on ? ' checked' : '') + '> <input class="nm" type="text" data-l="' + L.id + '" data-k="name" value="' + esc(L.name) + '"> ' +
         '<button type="button" data-act="up" data-l="' + L.id + '" title="Draw later (on top)">&uarr;</button><button type="button" data-act="down" data-l="' + L.id + '" title="Draw earlier">&darr;</button><button type="button" data-act="del" data-l="' + L.id + '" title="Remove layer">&times;</button></summary><div class="lb">' + layerBody(L) + '</div></details>';
     });
     h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
-    if (auto && layers.length) h += '<div class="sub">Layers were set up automatically from the Marks card. Change anything here to take control.</div>';
+    if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'Layers were set up automatically from the Marks card. Change anything here to take control.') + '</div>';
     pbody.innerHTML = h; pbody.scrollTop = sc;
   }
   const byId = id => layers.find(l => l.id === id);
@@ -676,7 +717,7 @@
     setPath(L, t.dataset.k, v); persist();
     if (t.type === 'range') { redraw(); tick(); return; }
     if (t.dataset.k === 'on' || t.dataset.k.startsWith('st.') && !['st.ramp', 'st.color'].includes(t.dataset.k) && t.dataset.k !== 'st.top') { /* draw-time options */ }
-    rebuild(); if (['type', 'lv'].includes(t.dataset.k)) renderPanel();
+    rebuild(); if (['type', 'lv', 'sheet'].includes(t.dataset.k)) renderPanel();
   }
   pbody.addEventListener('input', e => { if (e.target.type === 'range' || e.target.type === 'color') applyInput(e.target); });
   pbody.addEventListener('change', e => { if (e.target.type !== 'range' && e.target.type !== 'color') applyInput(e.target); });
@@ -690,7 +731,7 @@
     }
     if (b.dataset.act === 'toggle') { const d = b.closest('details'); d.open = !d.open; return; }
     claim(); const act = b.dataset.act, i = layers.findIndex(l => l.id === b.dataset.l);
-    if (act === 'add') { const L = newLayer($('addType').value); layers.push(L); openIds.add(L.id); }
+    if (act === 'add') { const L = newLayer($('addType').value); if (DASH) L.sheet = Object.keys(D.sheets)[0] || ''; layers.push(L); openIds.add(L.id); }
     else if (act === 'del' && i >= 0) layers.splice(i, 1);
     else if (act === 'up' && i >= 0 && i < layers.length - 1) [layers[i], layers[i + 1]] = [layers[i + 1], layers[i]];
     else if (act === 'down' && i > 0) [layers[i], layers[i - 1]] = [layers[i - 1], layers[i]];
@@ -722,6 +763,14 @@
     agg.forEach(({ r, n }) => rows.push(mk({ Layer: TX.cell('Flights'), 'Origin City': TX.cell(r['Origin City']), 'Origin Longitude': TX.cell(Number(r['Origin Longitude'])), 'Origin Latitude': TX.cell(Number(r['Origin Latitude'])),
       'Destination City': TX.cell(r['Destination City']), 'Destination Longitude': TX.cell(Number(r['Destination Longitude'])), 'Destination Latitude': TX.cell(Number(r['Destination Latitude'])), 'Destination Region': TX.cell(r['Destination Region']), 'SUM(Flights)': TX.cell(n, fmt(n)) })));
     const cols = keys.map(k => ({ name: k, dataType: k === 'COLLECT(Geometry)' ? 'spatial' : /Score|Altitude|Flights|Longitude|Latitude/.test(k) ? 'float' : 'string' }));
+    if (DASH) {          // one sheet per source table, each with only its own columns (like separate worksheets)
+      const sheets = {};
+      for (const name of ['Countries', 'Peaks', 'Flights']) {
+        const mine = rows.filter(r => str(r.Layer) === name), cs = cols.filter(c => c.name !== 'Layer' && mine.some(r => !isNull(r[c.name])));
+        sheets[name] = { cols: cs.slice().sort((x, y) => x.name.localeCompare(y.name)), rows: mine.map(r => Object.fromEntries(cs.map(c => [c.name, r[c.name]]))) };
+      }
+      return { sheets };
+    }
     const L = (type, name, lv, f, st) => { const l = newLayer(type, name, 'demo-' + type); l.lv = lv; l.f = f; Object.assign(l.st, st || {}); return l; };
     const q = new URLSearchParams(location.search), only = q.get('layers');
     let preset = [
@@ -735,5 +784,5 @@
 
   // ================= go =================
   applyStyle(); applyMap();
-  TX.start(onData, demoLoader);
+  (DASH ? TX.startDashboard : TX.start)(onData, demoLoader);
 })();

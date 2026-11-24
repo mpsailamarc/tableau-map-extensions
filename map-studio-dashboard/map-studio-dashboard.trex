@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <dashboard-extension id="com.demo.advancedmaps.mapstudiodashboard" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>Map studio for dashboards: every layer (shapes, symbols, pies, flow arcs) comes from its own worksheet on the dashboard, each with its own data source and filters</description>
+    <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://mpsailamarc.github.io/tableau-map-extensions/map-studio-dashboard/index.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+  </dashboard-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Map studio (dashboard)</text>
+    </resource>
+  </resources>
+</manifest>
