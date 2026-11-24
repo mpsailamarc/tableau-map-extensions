@@ -868,7 +868,6 @@
       if (added) persist();
     }
     if (!DASH && layers.length > 1) layers = layers.slice(0, 1);      // the worksheet extension draws exactly one layer
-    T.idx = -1; T.playing = false; T.acc = 0;      // new data from Tableau (a filter, say) always starts on "All dates"
     rebuild(); renderPanel();
     if (!TX.demo && !layers.length) show('<b>No layers loaded</b><br>' + esc(diagText()) + '<br>Sheets seen: ' + (Object.keys(sheets).join(', ') || 'none') + '. Layers: 0. Open the panel to choose a layer type.');
   }
