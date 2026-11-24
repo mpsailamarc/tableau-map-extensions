@@ -21,7 +21,7 @@
     dark: { bg: '#1b232c', land: '#3b4651', stroke: '#566370', label: '#fff', glow: 'rgba(255,255,255,.9)', dflt: '#f2a541', fill: '#4aa3df', halo: 'rgba(0,0,0,.55)' },
     light: { bg: '#dbe6ea', land: '#f3f2ee', stroke: '#b4b4ae', label: '#222', glow: 'rgba(255,255,255,.95)', dflt: '#d9822b', fill: '#3c7fb8', halo: 'rgba(255,255,255,.8)' }
   };
-  const TYPES = { shapes: 'Shapes (geometry)', symbols: 'Symbols', density: 'Density (heat map)', pies: 'Pie charts', arcs: 'Flow arcs' };
+  const TYPES = { shapes: 'Shapes (geometry)', symbols: 'Symbols', density: 'Density (heat map)', bars: '3D bars', pies: 'Pie charts', arcs: 'Flow arcs' };
   // density palettes: low density is see-through, high density is solid (like Tableau's Density mark)
   const DRAMPS = {
     fire: ['Yellow - red', [[0, '#fff3b0'], [0.4, '#f7a24b'], [0.75, '#e4572e'], [1, '#8c1c13']]],
@@ -120,7 +120,7 @@
   let uid = 0;
   function newLayer(type, name, id) {
     return { id: id || 'L' + Date.now().toString(36) + (uid++), name: name || TYPES[type], type, on: true, lv: '', f: {},
-      st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1 } };
+      st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1, bw: 1, bh: 1 } };
   }
   // Dashboard mode has no Marks card tiles, so defaults are guessed from the names and types of a sheet's columns.
   function guess(cx) {
@@ -170,6 +170,7 @@
         case 'shapes': return { geom: pick('geom', g.spatial[0]), name: pick('name', g.plain[0]), color: pick('color', g.meas[0] || g.plain[1]), size: pick('size', null), time: pick('time', g.date[0]) };
         case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]), time: pick('time', g.date[0]) };
         case 'density': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), weight: pick('weight', null), time: pick('time', g.date[0]) };
+        case 'bars': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), height: pick('height', g.meas[0]), color: pick('color', g.meas[1] || null), time: pick('time', g.date[0]) };
         case 'pies': return { name: pick('name', g.plain[0]), lon: pick('lon', null), lat: pick('lat', null), slice: pick('slice', g.plain[1]), value: pick('value', g.meas[0]) };
         default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]), time: pick('time', g.date[0]) };
       }
@@ -186,6 +187,7 @@
       case 'shapes': return { geom: pick('geom', spatialCols(cx)[0]), name: pick('name', loc.name), color: pick('color', col), size: pick('size', siz), time: pick('time', dateCols(cx)[0]) };
       case 'symbols': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), size: pick('size', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
       case 'density': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), weight: pick('weight', siz), time: pick('time', dateCols(cx)[0]) };
+      case 'bars': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), height: pick('height', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
       case 'pies': return { name: pick('name', loc.name), lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), slice: pick('slice', col), value: pick('value', siz) };
       default: return { oname: pick('oname', loc.name), olon: pick('olon', loc.lon), olat: pick('olat', loc.lat), dname: pick('dname', dst.name), dlon: pick('dlon', dst.lon), dlat: pick('dlat', dst.lat), width: pick('width', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
     }
@@ -217,7 +219,7 @@
     const m = { L, f: fieldsOf(L), cols: ctxOf(L).cols, items: [], skipped: 0, leg: [], ext: null, msg: '' };
     if (DASH && !D.sheets[L.sheet]) { m.msg = 'choose which sheet feeds this layer'; m.base = m.items; return m; }
     try {
-      ({ shapes: buildShapes, symbols: buildSymbols, density: buildDensity, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
+      ({ shapes: buildShapes, symbols: buildSymbols, density: buildDensity, bars: buildBars, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
     } catch (err) { m.msg = String(err && err.message || err); m.items = []; }
     m.base = m.items;          // all items; m.items becomes the part shown at the current time step
     return m;
@@ -242,6 +244,18 @@
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
     if (f.size) m.leg.push({ title: f.size, size: m.smax });
     m.items.sort((a, b) => (b.s || 0) - (a.s || 0));         // big first, small on top
+  }
+  function buildBars(m, rows) {
+    const f = m.f; if (!(f.lon && f.lat) && !f.name) { m.msg = 'choose a location: longitude and latitude, or a place name'; return; }
+    const lookup = nm => { const c = findCountry(nm) || (window.PLACES && window.PLACES.find(p => p[0].toLowerCase() === nm.toLowerCase())); return c ? (c.c ? { lon: c.c[0], lat: c.c[1] } : { lon: c[1], lat: c[2] }) : null; };
+    for (const r of rows) {
+      let lon = f.lon ? num(r[f.lon]) : null, lat = f.lat ? num(r[f.lat]) : null; const name = f.name ? str(r[f.name]) : '';
+      if (lon == null || lat == null) { if (!name) continue; const g = lookup(name); if (!g) { m.skipped++; continue; } lon = g.lon; lat = g.lat; }
+      m.items.push({ row: r, lon, lat, name, s: f.height ? num(r[f.height]) : null, t0: f.time ? tsOf(r[f.time]) : null }); stackExt(m, lon, lat);
+    }
+    m.smax = Math.max(1e-9, ...m.items.map(i => i.s || 0));
+    const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
+    if (f.height) m.leg.push({ title: f.height, size: m.smax, bar: true });
   }
   function buildDensity(m, rows) {
     const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
@@ -341,6 +355,56 @@
   function hitSymbols(x, y, m) {
     let best = null, bd = 1e9;
     for (const it of m.items) { if (!it._s) continue; const d = (it._x - x) ** 2 + (it._y - y) ** 2, lim = Math.max(64, it._s * it._s); if (d < bd && d < lim) { bd = d; best = it; } }
+    return best;
+  }
+
+  // ================= layer: 3D bars =================
+  // Each bar is a shaded column standing on its location. On the globe it rises along the line away from the centre of the earth, so it
+  // leans with the view and shows as a ring when seen end on; on the flat map it rises up the screen.
+  function shade(col, k) {          // a #rrggbb / rgb() colour, lighter (k>1) or darker (k<1)
+    let r, g, b; const h = /^#([0-9a-f]{6})$/i.exec(col);
+    if (h) { r = parseInt(h[1].slice(0, 2), 16); g = parseInt(h[1].slice(2, 4), 16); b = parseInt(h[1].slice(4, 6), 16); }
+    else { const n = String(col).match(/[\d.]+/g); if (!n || n.length < 3) return col; [r, g, b] = n.map(Number); }
+    const f = v => Math.max(0, Math.min(255, Math.round(k > 1 ? v + (255 - v) * (k - 1) : v * k)));
+    return 'rgb(' + f(r) + ',' + f(g) + ',' + f(b) + ')';
+  }
+  function drawBars(c, env, m) {
+    const st = m.L.st, T = STYLE[G.style], zf = Math.min(1.8, 0.7 + env.z * 0.15), maxH = 120 * (st.bh || 1) * zf, w = (9 + 5 * Math.min(2.5, env.z * 0.5)) * (st.bw || 1);
+    const pts = [];
+    for (const it of m.items) {
+      it._w = 0; const B = env.pt(it.lon, it.lat); if (!B) continue;
+      const hpx = Math.max(2, (m.f.height && it.s != null ? Math.max(0, it.s) / m.smax : 0.3) * maxH);
+      let Tp;
+      if (env.flat) Tp = [B[0], B[1] - hpx, 1]; else Tp = env.g.ll(it.lon, it.lat, 1 + hpx / env.g.R);
+      pts.push({ it, B, Tp });
+    }
+    pts.sort(env.flat ? (a, b) => a.B[1] - b.B[1] : (a, b) => a.B[2] - b.B[2]);          // far ones first, near ones cover them
+    c.lineJoin = 'round';
+    for (const { it, B, Tp } of pts) {
+      const col = colOf(m, it) === 'transparent' ? T.fill : (colOf(m, it) || T.dflt), dx = Tp[0] - B[0], dy = Tp[1] - B[1], len = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+      const nx = len > 0.5 ? -dy / len : 1, ny = len > 0.5 ? dx / len : 0, hw = w / 2, rot = len > 0.5 ? Math.atan2(ny, nx) : 0, ry = len > 0.5 ? hw * 0.5 : hw;
+      const hot = hover && hover.it === it; it._x = B[0]; it._y = B[1]; it._tx = Tp[0]; it._ty = Tp[1]; it._w = w;
+      c.globalAlpha = st.alpha * dim(m, it);
+      if (len > 0.5) {
+        const gr = c.createLinearGradient(B[0] - nx * hw, B[1] - ny * hw, B[0] + nx * hw, B[1] + ny * hw);
+        gr.addColorStop(0, shade(col, 0.62)); gr.addColorStop(0.35, shade(col, 1.12)); gr.addColorStop(1, shade(col, 0.55));
+        c.beginPath(); c.moveTo(B[0] - nx * hw, B[1] - ny * hw); c.lineTo(Tp[0] - nx * hw, Tp[1] - ny * hw); c.lineTo(Tp[0] + nx * hw, Tp[1] + ny * hw); c.lineTo(B[0] + nx * hw, B[1] + ny * hw);
+        c.ellipse(B[0], B[1], hw, ry, rot, 0, Math.PI, false); c.closePath();      // rounded foot
+        c.fillStyle = gr; c.fill();
+      }
+      c.beginPath(); c.ellipse(Tp[0], Tp[1], hw, ry, rot, 0, 6.3); c.fillStyle = shade(col, 1.3); c.fill();      // lit top
+      c.strokeStyle = st.ocolor || (hot ? '#fff' : 'rgba(0,0,0,.4)'); c.lineWidth = hot ? 2 : 0.7; c.stroke();
+      c.globalAlpha = 1;
+      if (st.labels && it.name && env.z >= 2) label(c, it.name, Tp[0] + hw + 3, Tp[1] + 4);
+    }
+  }
+  function hitBars(x, y, m) {
+    let best = null, bd = 1e9;
+    for (const it of m.items) {
+      if (!it._w) continue; const ax = it._x, ay = it._y, bx = it._tx - ax, by = it._ty - ay, l2 = bx * bx + by * by || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * bx + (y - ay) * by) / l2)), d = Math.hypot(x - (ax + bx * t), y - (ay + by * t));
+      if (d <= it._w / 2 + 3 && d < bd) { bd = d; best = it; }
+    }
     return best;
   }
 
@@ -604,7 +668,7 @@
       c.font = 'bold 11px ' + FONT; c.fillStyle = '#000'; c.textAlign = 'left'; c.fillText(trunc(m.L.name, 26), x + 8, yy); yy += 17;
       for (const lg of m.leg) {
         c.textAlign = 'left'; c.fillStyle = '#222';
-        if (lg.size != null) { c.font = '11px ' + FONT; c.fillText((lg.line ? 'Width: ' : 'Size: ') + trunc(lg.title, 14) + ' (max ' + fmt(Math.round(lg.size)) + ')', x + 10, yy); yy += 18; continue; }
+        if (lg.size != null) { c.font = '11px ' + FONT; c.fillText((lg.line ? 'Width: ' : lg.bar ? 'Height: ' : 'Size: ') + trunc(lg.title, 14) + ' (max ' + fmt(Math.round(lg.size)) + ')', x + 10, yy); yy += 18; continue; }
         c.font = 'bold 11px ' + FONT; c.fillText(trunc(lg.title, 26), x + 10, yy); c.font = '11px ' + FONT; yy += 16;
         if (lg.cat) {
           const cats = [...lg.cat].slice(0, lg.max || 6);
@@ -653,6 +717,7 @@
         if (m.L.type === 'shapes') drawShapesFlat(c, v, m);
         else if (m.L.type === 'symbols') drawSymbols(c, env, m);
         else if (m.L.type === 'density') drawDensity(c, env, m);
+        else if (m.L.type === 'bars') drawBars(c, env, m);
         else if (m.L.type === 'pies') drawPies(c, env, m);
         else { drawArcsFlat(c, v, m); drawArcNodes(c, env, m); }
       }
@@ -665,13 +730,14 @@
         if (m.L.type === 'shapes') drawShapesGlobe(c, g, m);
         else if (m.L.type === 'symbols') drawSymbols(c, env, m);
         else if (m.L.type === 'density') drawDensity(c, env, m);
+        else if (m.L.type === 'bars') drawBars(c, env, m);
         else if (m.L.type === 'pies') drawPies(c, env, m);
         else { drawArcsGlobe(c, g, m); drawArcNodes(c, env, m); }
       }
       drawLegend(c, g.W, g.H);
     }
   };
-  const HIT = { shapes: hitShapes, symbols: hitSymbols, density: () => null, pies: hitPies, arcs: hitArcs };      // a density layer is a surface, so it has nothing to hover
+  const HIT = { shapes: hitShapes, symbols: hitSymbols, density: () => null, bars: hitBars, pies: hitPies, arcs: hitArcs };      // a density layer is a surface, so it has nothing to hover
   function onHover(x, y, e, view) {
     const tipV = view || active();
     if (x == null) { setHover(null); tipV.hideTip(); return; }
@@ -831,6 +897,10 @@
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'size', 'Size by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
         '<label>Symbol<select data-l="' + L.id + '" data-k="st.shape">' + SHAPES.map(([k, n]) => '<option value="' + k + '"' + (L.st.shape === k ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
         palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'size', 'Symbol size', 0.4, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
+    } else if (L.type === 'bars') {
+      if (L.st.bh == null) L.st.bh = 1; if (L.st.bw == null) L.st.bw = 1;
+      h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Location name', nonSpatial) + fsel(L, 'height', 'Height by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
+        palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'bh', 'Max height', 0.2, 3, 0.05) + rng(L, 'bw', 'Bar width', 0.3, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
     } else if (L.type === 'density') {
       const st = L.st; if (st.radius == null) st.radius = 1; if (st.intensity == null) st.intensity = 1; if (!DRAMPS[st.dramp]) st.dramp = 'fire';
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'weight', 'Weight by (optional)', numeric) + fsel(L, 'time', 'Time field', timeable) +
