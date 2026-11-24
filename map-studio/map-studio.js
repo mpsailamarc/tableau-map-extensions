@@ -35,7 +35,7 @@
   const $ = id => document.getElementById(id);
 
   // ================= state =================
-  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6, tm: 'period', tn: 3, tg: 'exact', tsp: 1.5, tloop: true };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
+  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6, tm: 'period', tn: 3, tg: 'exact', tsp: 1.5, tloop: true, dismissed: [] };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
   // Two ways to get data: as a worksheet extension (the one sheet it sits on) or as a dashboard extension (one sheet per layer).
   const DASH = !!window.MS_DASHBOARD;
   let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null, sheets: {} };
@@ -758,6 +758,7 @@
     const g = TX.settings.get;
     G.map = g('map', G.map); G.style = g('style', G.style); G.base = g('base', '1') === '1'; G.lf = g('lf', ''); G.sv = g('sv', 'fit'); G.rot = g('rot', '0') === '1'; G.rs = parseFloat(g('rs', '6')) || 6; try { G.fixed = JSON.parse(g('fixed', 'null')); } catch (e) { G.fixed = null; }
     G.tm = g('tm', 'period'); G.tn = parseInt(g('tn', '3'), 10) || 3; G.tg = g('tg', 'exact'); G.tsp = parseFloat(g('tsp', '1.5')) || 1.5; G.tloop = g('tloop', '1') === '1';
+    try { G.dismissed = JSON.parse(g('dismissed', '[]')); } catch (e) { G.dismissed = []; }
     try { const s = g('layers', ''); if (s) { layers = JSON.parse(s); auto = false; } } catch (e) { /* ignore a damaged value */ }
   }
   TX.settings.onError = err => show('<b>Your settings could not be saved</b><br>' + esc(String(err && err.message || err)) + '<br>They will be lost if the extension reloads. Try again, or save the workbook.');
@@ -766,7 +767,7 @@
     {
       TX.settings.set('map', G.map); TX.settings.set('style', G.style); TX.settings.set('base', G.base ? '1' : '0'); TX.settings.set('lf', G.lf); TX.settings.set('sv', G.sv); TX.settings.set('rot', G.rot ? '1' : '0'); TX.settings.set('rs', String(G.rs)); TX.settings.set('fixed', JSON.stringify(G.fixed));
       TX.settings.set('tm', G.tm); TX.settings.set('tn', String(G.tn)); TX.settings.set('tg', G.tg); TX.settings.set('tsp', String(G.tsp)); TX.settings.set('tloop', G.tloop ? '1' : '0');
-      TX.settings.set('layers', JSON.stringify(layers));
+      TX.settings.set('dismissed', JSON.stringify(G.dismissed)); TX.settings.set('layers', JSON.stringify(layers));
     }
   }
   function onData(d) {
@@ -778,6 +779,11 @@
     const cols = (d.cols && d.cols.length) || !d.rows || d.rows.length ? (d.cols || []) : D.cols;
     D = { rows: d.rows || [], enc: d.enc || {}, cols, preset: d.preset || null, sheets };
     if (auto || !layers) { layers = autoLayers(); auto = true; }
+    else if (DASH) {          // saved layers stay as they are, but a sheet that has map fields now and no layer yet (it was empty or still loading when they were saved) gets one
+      const have = new Set(layers.map(l => l.sheet)); let added = false;
+      for (const L of autoLayers()) if (!have.has(L.sheet) && !G.dismissed.includes(L.id)) { layers.push(L); added = true; }
+      if (added) persist();
+    }
     rebuild(); renderPanel();
   }
 
@@ -904,7 +910,7 @@
     if (b.dataset.act === 'toggle') { const d = b.closest('details'); d.open = !d.open; return; }
     claim(); const act = b.dataset.act, i = layers.findIndex(l => l.id === b.dataset.l);
     if (act === 'add') { const L = newLayer($('addType').value); if (DASH) L.sheet = Object.keys(D.sheets)[0] || ''; layers.push(L); openIds.add(L.id); }
-    else if (act === 'del' && i >= 0) layers.splice(i, 1);
+    else if (act === 'del' && i >= 0) { const L = layers[i]; if (DASH && L.sheet && !G.dismissed.includes('auto-' + L.sheet)) G.dismissed.push('auto-' + L.sheet); layers.splice(i, 1); }      // remember a removed sheet's layer so it is not added back
     else if (act === 'up' && i >= 0 && i < layers.length - 1) [layers[i], layers[i + 1]] = [layers[i + 1], layers[i]];
     else if (act === 'down' && i > 0) [layers[i], layers[i - 1]] = [layers[i - 1], layers[i]];
     else if (act === 'clearcolor' && i >= 0) layers[i].st.color = '';
