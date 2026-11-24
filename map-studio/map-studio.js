@@ -785,6 +785,7 @@
       if (added) persist();
     }
     rebuild(); renderPanel();
+    if (!TX.demo && !layers.length) show('<b>No layers loaded</b><br>' + esc(diagText()) + '<br>Sheets seen: ' + (Object.keys(sheets).join(', ') || 'none') + '. Layers: 0. Open the Layers panel to add one.');
   }
 
   // ================= Layers panel =================
@@ -840,7 +841,7 @@
     const i = TX.settings.info, hm = d => d.toTimeString().slice(0, 8);
     if (TX.demo) return 'Demo mode: settings are not stored.';
     return 'At start the workbook held ' + (i.loaded == null ? '?' : i.loaded) + ' saved setting(s)' + (i.restored.length ? ', and ' + i.restored.length + ' were restored from the copy kept on this computer' : '') + '. ' +
-      (i.last ? (i.last.ok ? 'Last save ' + hm(i.last.at) + ': OK, workbook now holds ' + i.last.keys + ' setting(s).' : 'Last save ' + hm(i.last.at) + ' FAILED: ' + i.last.error) : 'Nothing saved yet this session.');
+      'Layers now: ' + layers.length + '. ' + (i.last ? (i.last.ok ? 'Last save ' + hm(i.last.at) + ': OK, workbook now holds ' + i.last.keys + ' setting(s).' : 'Last save ' + hm(i.last.at) + ' FAILED: ' + i.last.error) : 'Nothing saved yet this session.');
   }
   TX.settings.onSaved = () => { const e = $('diag'); if (e) e.textContent = diagText(); };
   function renderPanel() {
