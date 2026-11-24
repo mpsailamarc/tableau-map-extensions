@@ -27,7 +27,7 @@
   const $ = id => document.getElementById(id);
 
   // ================= state =================
-  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
+  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6 };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
   let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null };
   let models = [], hover = null, phase = 0, homed = false, ext = null, raf = 0, saveT = 0;
 
@@ -533,13 +533,24 @@
   const globe = new GlobeView(content, { draw: DRAW.globe, onHover });
   const active = () => (G.map === 'globe' ? globe : flat);
   function applyStyle() { const T = STYLE[G.style]; flat.theme = { bg: T.bg, land: T.land, stroke: T.stroke }; globe.setTheme(G.style); document.body.style.background = T.bg; flat.showLand = globe.showLand = G.base; }
-  function applyMap() { flat.setVisible(G.map !== 'globe'); globe.setVisible(G.map === 'globe'); redraw(); }
+  function applyMap() { flat.setVisible(G.map !== 'globe'); globe.setVisible(G.map === 'globe'); redraw(); tick(); }
   function setHover(h) { const same = (!h && !hover) || (h && hover && h.m === hover.m && h.it === hover.it); if (!same) { hover = h; redraw(); } }
   function redraw() { active().draw(); }
+  // animation loop: flowing dashes on arcs, and the globe turning by itself
+  let lastT = 0, dragging = false, resumeAt = 0;
+  const spinning = () => G.map === 'globe' && G.rot;
   function tick() {
-    cancelAnimationFrame(raf); if (!models.some(m => m.L.on && m.L.type === 'arcs' && m.L.st.anim && m.items.length)) { return; }
-    phase = (performance.now() / 45) % 15.5; redraw(); raf = requestAnimationFrame(tick);
+    cancelAnimationFrame(raf);
+    const arcsAnim = models.some(m => m.L.on && m.L.type === 'arcs' && m.L.st.anim && m.items.length);
+    if (!arcsAnim && !spinning()) { lastT = 0; return; }
+    const now = performance.now(), dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0; lastT = now;
+    phase = (now / 45) % 15.5;
+    if (spinning() && !dragging && !hover && now > resumeAt) globe.lon = wrap180(globe.lon - G.rs * dt);   // west to east, like the earth
+    redraw(); raf = requestAnimationFrame(tick);
   }
+  globe.cv.addEventListener('pointerdown', () => { dragging = true; });
+  const letGo = () => { if (dragging) { dragging = false; resumeAt = performance.now() + 1500; } };
+  globe.cv.addEventListener('pointerup', letGo); globe.cv.addEventListener('pointercancel', letGo);
 
   // ---- fit the views to the data ----
   const toLon = cx => ((cx * 360 - 180 + 540) % 360 + 360) % 360 - 180, toLat = cy => (2 * Math.atan(Math.exp(2 * Math.PI * (0.5 - cy))) - Math.PI / 2) / D2R;
@@ -574,12 +585,12 @@
   function show(msg) { hint.innerHTML = msg; hint.hidden = !msg; }
   function loadSettings() {
     const g = TX.settings.get;
-    G.map = g('map', G.map); G.style = g('style', G.style); G.base = g('base', '1') === '1'; G.lf = g('lf', ''); G.sv = g('sv', 'fit'); try { G.fixed = JSON.parse(g('fixed', 'null')); } catch (e) { G.fixed = null; }
+    G.map = g('map', G.map); G.style = g('style', G.style); G.base = g('base', '1') === '1'; G.lf = g('lf', ''); G.sv = g('sv', 'fit'); G.rot = g('rot', '0') === '1'; G.rs = parseFloat(g('rs', '6')) || 6; try { G.fixed = JSON.parse(g('fixed', 'null')); } catch (e) { G.fixed = null; }
     try { const s = g('layers', ''); if (s) { layers = JSON.parse(s); auto = false; } } catch (e) { /* ignore a damaged value */ }
   }
   function persist() {
     clearTimeout(saveT); saveT = setTimeout(() => {
-      TX.settings.set('map', G.map); TX.settings.set('style', G.style); TX.settings.set('base', G.base ? '1' : '0'); TX.settings.set('lf', G.lf); TX.settings.set('sv', G.sv); TX.settings.set('fixed', JSON.stringify(G.fixed));
+      TX.settings.set('map', G.map); TX.settings.set('style', G.style); TX.settings.set('base', G.base ? '1' : '0'); TX.settings.set('lf', G.lf); TX.settings.set('sv', G.sv); TX.settings.set('rot', G.rot ? '1' : '0'); TX.settings.set('rs', String(G.rs)); TX.settings.set('fixed', JSON.stringify(G.fixed));
       TX.settings.set('layers', JSON.stringify(layers));
     }, 400);
   }
@@ -633,6 +644,7 @@
   function renderPanel() {
     const sc = pbody.scrollTop;
     let h = '<div class="grp"><label>Map<select data-g="map"><option value="flat"' + (G.map === 'flat' ? ' selected' : '') + '>Flat</option><option value="globe"' + (G.map === 'globe' ? ' selected' : '') + '>Globe (3D)</option></select></label>' +
+      (G.map === 'globe' ? '<label class="chk"><input type="checkbox" data-g="rot"' + (G.rot ? ' checked' : '') + '>&nbsp;Auto-rotate the globe</label>' + (G.rot ? '<label>Rotation speed<input type="range" data-g="rs" min="1" max="30" step="1" value="' + G.rs + '"></label>' : '') : '') +
       '<label>Style<select data-g="style"><option value="dark"' + (G.style === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (G.style === 'light' ? ' selected' : '') + '>Light</option></select></label>' +
       '<label class="chk"><input type="checkbox" data-g="base"' + (G.base ? ' checked' : '') + '>&nbsp;Show country base map</label>' +
       '<label title="Where the map opens, and where the home button goes">Start view<select data-g="sv"><option value="fit"' + (G.sv === 'fit' ? ' selected' : '') + '>Fit to the data</option><option value="world"' + (G.sv === 'world' ? ' selected' : '') + '>Whole world</option><option value="fixed"' + (G.sv === 'fixed' ? ' selected' : '') + '>Saved view</option></select></label>' +
@@ -654,8 +666,9 @@
   function applyInput(t, final) {
     if (t.dataset.g) {
       const k = t.dataset.g, v = valueOf(t); G[k] = v; claim(); persist();
+      if (k === 'rot' || k === 'rs') { tick(); if (k === 'rot') renderPanel(); return; }
       if (k === 'sv') { applyFit(); flat.reset(); globe.reset(); homed = true; renderPanel(); redraw(); return; }
-      if (k === 'map') applyMap(); else if (k === 'style' || k === 'base') { applyStyle(); redraw(); } else { rebuild(); renderPanel(); }
+      if (k === 'map') { applyMap(); renderPanel(); } else if (k === 'style' || k === 'base') { applyStyle(); redraw(); } else { rebuild(); renderPanel(); }
       return;
     }
     const L = byId(t.dataset.l); if (!L) return; claim();
