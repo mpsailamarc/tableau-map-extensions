@@ -578,34 +578,30 @@
 
   // ================= legend =================
   function drawLegend(c, W, H) {
-    const vis = models.filter(m => m.L.on && m.base.length && m.leg.length); if (!vis.length) return;
-    const multi = vis.length > 1, w = 178, ROW = 16; let h = 10;
-    const blocks = [];
+    const vis = models.filter(m => m.L.on && m.L.st.legend !== false && m.base.length && m.leg.length); if (!vis.length) return;
+    const w = 178, ROW = 16, GAP = 8;
+    const heightOf = m => { let h = 10 + 17; for (const lg of m.leg) { let ht = 16; if (lg.cat) ht += Math.min(lg.cat.size, lg.max || 6) * ROW + (lg.cat.size > (lg.max || 6) ? ROW : 0); else if (lg.ramp) ht += 30; else if (lg.size != null) ht = 18; h += ht; } return h + 4; };
+    // one card per layer, stacked up from the bottom left; a new column starts when the next card would not fit
+    let x = 8, bottom = H - 20; c.textBaseline = 'middle';
     for (const m of vis) {
-      if (multi) h += 17;
+      const h = heightOf(m); if (h > H - 30) continue;
+      if (bottom - h < 8 && bottom !== H - 20) { x += w + GAP; bottom = H - 20; }
+      const y = bottom - h; bottom = y - GAP;
+      panel(c, x, y, w, h); let yy = y + 14;
+      c.font = 'bold 11px ' + FONT; c.fillStyle = '#000'; c.textAlign = 'left'; c.fillText(trunc(m.L.name, 26), x + 8, yy); yy += 17;
       for (const lg of m.leg) {
-        let ht = 16;
-        if (lg.cat) ht += Math.min(lg.cat.size, lg.max || 6) * ROW + (lg.cat.size > (lg.max || 6) ? ROW : 0);
-        else if (lg.ramp) ht += 30;
-        else if (lg.size != null) ht = 18;
-        h += ht; blocks.push([m, lg, ht]);
-      }
-    }
-    h += 4; const x = 8, y = Math.max(8, H - h - 20); if (h > H - 30) return;
-    panel(c, x, y, w, h); let yy = y + 14, lastM = null; c.textBaseline = 'middle';
-    for (const [m, lg] of blocks) {
-      if (multi && m !== lastM) { c.font = 'bold 11px ' + FONT; c.fillStyle = '#000'; c.textAlign = 'left'; c.fillText(m.L.name, x + 8, yy); yy += 17; lastM = m; }
-      c.textAlign = 'left'; c.fillStyle = '#222';
-      if (lg.size != null) { c.font = '11px ' + FONT; c.fillText((lg.line ? 'Width: ' : 'Size: ') + trunc(lg.title, 14) + ' (max ' + fmt(Math.round(lg.size)) + ')', x + 10, yy); yy += 18; continue; }
-      c.font = 'bold 11px ' + FONT; c.fillText(trunc(lg.title, 26), x + 10, yy); c.font = '11px ' + FONT; yy += 16;
-      if (lg.cat) {
-        const cats = [...lg.cat].slice(0, lg.max || 6);
-        cats.forEach(([n, col]) => { c.fillStyle = col; c.fillRect(x + 10, yy - 5, 14, 10); c.strokeStyle = 'rgba(0,0,0,.35)'; c.strokeRect(x + 10, yy - 5, 14, 10); c.fillStyle = '#222'; c.fillText(trunc(n, 24), x + 30, yy); yy += ROW; });
-        if (lg.cat.size > cats.length) { c.fillStyle = '#666'; c.fillText('+' + (lg.cat.size - cats.length) + ' more', x + 30, yy); yy += ROW; }
-      } else if (lg.ramp) {
-        const gr = c.createLinearGradient(x + 10, 0, x + w - 10, 0); lg.ramp.forEach(s => gr.addColorStop(s[0], s[1]));
-        c.fillStyle = gr; c.fillRect(x + 10, yy - 5, w - 20, 9); c.fillStyle = '#222'; c.textAlign = 'left'; c.fillText(lg.words ? lg.words[0] : fmt(Math.round(lg.min)), x + 10, yy + 12);
-        c.textAlign = 'right'; c.fillText(lg.words ? lg.words[1] : fmt(Math.round(lg.max)), x + w - 10, yy + 12); c.textAlign = 'left'; yy += 30;
+        c.textAlign = 'left'; c.fillStyle = '#222';
+        if (lg.size != null) { c.font = '11px ' + FONT; c.fillText((lg.line ? 'Width: ' : 'Size: ') + trunc(lg.title, 14) + ' (max ' + fmt(Math.round(lg.size)) + ')', x + 10, yy); yy += 18; continue; }
+        c.font = 'bold 11px ' + FONT; c.fillText(trunc(lg.title, 26), x + 10, yy); c.font = '11px ' + FONT; yy += 16;
+        if (lg.cat) {
+          const cats = [...lg.cat].slice(0, lg.max || 6);
+          cats.forEach(([n, col]) => { c.fillStyle = col; c.fillRect(x + 10, yy - 5, 14, 10); c.strokeStyle = 'rgba(0,0,0,.35)'; c.strokeRect(x + 10, yy - 5, 14, 10); c.fillStyle = '#222'; c.fillText(trunc(n, 24), x + 30, yy); yy += ROW; });
+          if (lg.cat.size > cats.length) { c.fillStyle = '#666'; c.fillText('+' + (lg.cat.size - cats.length) + ' more', x + 30, yy); yy += ROW; }
+        } else if (lg.ramp) {
+          const gr = c.createLinearGradient(x + 10, 0, x + w - 10, 0); lg.ramp.forEach(st => gr.addColorStop(st[0], st[1]));
+          c.fillStyle = gr; c.fillRect(x + 10, yy - 5, w - 20, 9); c.fillStyle = '#222'; c.textAlign = 'left'; c.fillText(lg.words ? lg.words[0] : fmt(Math.round(lg.min)), x + 10, yy + 12);
+          c.textAlign = 'right'; c.fillText(lg.words ? lg.words[1] : fmt(Math.round(lg.max)), x + w - 10, yy + 12); c.textAlign = 'left'; yy += 30;
+        }
       }
     }
     c.textBaseline = 'alphabetic';
@@ -668,7 +664,7 @@
     if (x == null) { setHover(null); tipV.hideTip(); return; }
     let h = null;
     for (let i = models.length - 1; i >= 0 && !h; i--) {
-      const m = models[i]; if (!m.L.on || !m.items.length) continue;
+      const m = models[i]; if (!m.L.on || !m.items.length || m.L.st.active === false) continue;      // a layer set to not interactive has no hover
       const it = HIT[m.L.type](x, y, m, tipV); if (it) h = { m, it };
     }
     setHover(h); if (!h) { tipV.hideTip(); return; } tipV.showTip(tipHtml(h.m, h.it), e);
@@ -862,7 +858,7 @@
     h += '<div class="lh">Layers <span class="sub">(top of the list is drawn last)</span></div>';
     [...layers].reverse().forEach(L => {
       h += '<details class="lyr" data-id="' + L.id + '"' + (openIds.has(L.id) ? ' open' : '') + '><summary><button type="button" data-act="toggle" class="chev" title="Show / hide the settings"></button><input type="checkbox" data-l="' + L.id + '" data-k="on" title="Show / hide"' + (L.on ? ' checked' : '') + '> <input class="nm" type="text" data-l="' + L.id + '" data-k="name" value="' + esc(L.name) + '"> ' +
-        '<button type="button" data-act="up" data-l="' + L.id + '" title="Draw later (on top)">&uarr;</button><button type="button" data-act="down" data-l="' + L.id + '" title="Draw earlier">&darr;</button><button type="button" data-act="del" data-l="' + L.id + '" title="Remove layer">&times;</button></summary><div class="lb">' + layerBody(L) + '</div></details>';
+        '<button type="button" data-act="up" data-l="' + L.id + '" title="Draw later (on top)">&uarr;</button><button type="button" data-act="down" data-l="' + L.id + '" title="Draw earlier">&darr;</button><button type="button" data-act="del" data-l="' + L.id + '" title="Remove layer">&times;</button></summary><div class="lb"><div class="two"><label class="chk" title="Show a legend card for this layer"><input type="checkbox" data-l="' + L.id + '" data-k="st.legend"' + (L.st.legend !== false ? ' checked' : '') + '>&nbsp;Legend card</label><label class="chk" title="Off: the layer is only drawn. Hover and tooltips ignore it"><input type="checkbox" data-l="' + L.id + '" data-k="st.active"' + (L.st.active !== false ? ' checked' : '') + '>&nbsp;Interactive</label></div>' + layerBody(L) + '</div></details>';
     });
     h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
     if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'Layers were set up automatically from the Marks card. Change anything here to take control.') + '</div>';
