@@ -152,13 +152,20 @@
     if (e.location && e.destination) out.push(newLayer('arcs', 'Flows', 'auto-arcs'));
     else if (e.location && loc.lon && loc.lat) out.push(newLayer('symbols', 'Symbols', 'auto-symbols'));
     else if (e.location && loc.name && !out.length) out.push(newLayer('pies', 'Pies', 'auto-pies'));
+    if (!out.length) {          // nothing on the Marks card tiles: guess from the fields on Detail
+      const g = guess(D);
+      if (g.spatial.length) out.push(newLayer('shapes', 'Shapes', 'auto-shapes'));
+      else if (g.hasArcs) out.push(newLayer('arcs', 'Flows', 'auto-arcs'));
+      else if (g.lon && g.lat) out.push(newLayer('symbols', 'Symbols', 'auto-symbols'));
+    }
     return out;
   }
   function fieldsOf(L) {                // resolve every field a layer uses: explicit choice, else the Marks card tile (or a guess in dashboard mode)
     const f = L.f, cx = ctxOf(L), e = cx.enc || {}, nm = a => (a && a[0] ? a[0].name : null);
     const pick = (k, d) => (f[k] === '-' ? null : (f[k] || d || null));
-    if (DASH) {
-      const g = guess(cx);
+    const g = guess(cx);
+    const mk = (d) => { const o = {}; for (const k of Object.keys(d)) o[k] = d[k]; return o; };
+    const guessed = (() => {
       switch (L.type) {
         case 'shapes': return { geom: pick('geom', g.spatial[0]), name: pick('name', g.plain[0]), color: pick('color', g.meas[0] || g.plain[1]), size: pick('size', null), time: pick('time', g.date[0]) };
         case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]), time: pick('time', g.date[0]) };
@@ -166,7 +173,13 @@
         case 'pies': return { name: pick('name', g.plain[0]), lon: pick('lon', null), lat: pick('lat', null), slice: pick('slice', g.plain[1]), value: pick('value', g.meas[0]) };
         default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]), time: pick('time', g.date[0]) };
       }
-    }
+    })();
+    if (DASH) return guessed;
+    const out = fieldsOfMarks(L, cx, e, nm, pick);
+    for (const k of Object.keys(out)) if (out[k] == null && f[k] !== '-') out[k] = guessed[k] || null;
+    return out;
+  }
+  function fieldsOfMarks(L, cx, e, nm, pick) {
     const loc = classify((e.location || []).map(x => x.name)), dst = classify((e.destination || []).map(x => x.name));
     const col = nm(e.color), siz = nm(e.size);
     switch (L.type) {
