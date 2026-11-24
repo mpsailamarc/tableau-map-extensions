@@ -21,7 +21,15 @@
     dark: { bg: '#1b232c', land: '#3b4651', stroke: '#566370', label: '#fff', glow: 'rgba(255,255,255,.9)', dflt: '#f2a541', fill: '#4aa3df', halo: 'rgba(0,0,0,.55)' },
     light: { bg: '#dbe6ea', land: '#f3f2ee', stroke: '#b4b4ae', label: '#222', glow: 'rgba(255,255,255,.95)', dflt: '#d9822b', fill: '#3c7fb8', halo: 'rgba(255,255,255,.8)' }
   };
-  const TYPES = { shapes: 'Shapes (geometry)', symbols: 'Symbols', pies: 'Pie charts', arcs: 'Flow arcs' };
+  const TYPES = { shapes: 'Shapes (geometry)', symbols: 'Symbols', density: 'Density (heat map)', pies: 'Pie charts', arcs: 'Flow arcs' };
+  // density palettes: low density is see-through, high density is solid (like Tableau's Density mark)
+  const DRAMPS = {
+    fire: ['Yellow - red', [[0, '#fff3b0'], [0.4, '#f7a24b'], [0.75, '#e4572e'], [1, '#8c1c13']]],
+    ember: ['Dark red', [[0, '#f6c8b6'], [0.5, '#d9523e'], [1, '#5c0a0a']]],
+    ocean: ['Blue - green', [[0, '#d4f1f4'], [0.45, '#4cc3c9'], [1, '#08306b']]],
+    plasma: ['Purple - orange', [[0, '#f9e04b'], [0.5, '#e4572e'], [1, '#4b0f6b']]],
+    mono: ['White', [[0, '#ffffff'], [1, '#ffffff']]]
+  };
   const SHAPES = [['triangle', 'Triangle'], ['circle', 'Circle'], ['square', 'Square'], ['diamond', 'Diamond'], ['star', 'Star']];
   const content = document.getElementById('content'), hint = document.getElementById('hint'), note = document.getElementById('note');
   const $ = id => document.getElementById(id);
@@ -112,7 +120,7 @@
   let uid = 0;
   function newLayer(type, name, id) {
     return { id: id || 'L' + Date.now().toString(36) + (uid++), name: name || TYPES[type], type, on: true, lv: '', f: {},
-      st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false } };
+      st: { color: '', ramp: type === 'arcs' ? 'heat' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, dramp: 'fire', radius: 1, intensity: 1 } };
   }
   // Dashboard mode has no Marks card tiles, so defaults are guessed from the names and types of a sheet's columns.
   function guess(cx) {
@@ -154,6 +162,7 @@
       switch (L.type) {
         case 'shapes': return { geom: pick('geom', g.spatial[0]), name: pick('name', g.plain[0]), color: pick('color', g.meas[0] || g.plain[1]), size: pick('size', null), time: pick('time', g.date[0]) };
         case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]), time: pick('time', g.date[0]) };
+        case 'density': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), weight: pick('weight', null), time: pick('time', g.date[0]) };
         case 'pies': return { name: pick('name', g.plain[0]), lon: pick('lon', null), lat: pick('lat', null), slice: pick('slice', g.plain[1]), value: pick('value', g.meas[0]) };
         default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]), time: pick('time', g.date[0]) };
       }
@@ -163,6 +172,7 @@
     switch (L.type) {
       case 'shapes': return { geom: pick('geom', spatialCols(cx)[0]), name: pick('name', loc.name), color: pick('color', col), size: pick('size', siz), time: pick('time', dateCols(cx)[0]) };
       case 'symbols': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), size: pick('size', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
+      case 'density': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), weight: pick('weight', siz), time: pick('time', dateCols(cx)[0]) };
       case 'pies': return { name: pick('name', loc.name), lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), slice: pick('slice', col), value: pick('value', siz) };
       default: return { oname: pick('oname', loc.name), olon: pick('olon', loc.lon), olat: pick('olat', loc.lat), dname: pick('dname', dst.name), dlon: pick('dlon', dst.lon), dlat: pick('dlat', dst.lat), width: pick('width', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
     }
@@ -194,7 +204,7 @@
     const m = { L, f: fieldsOf(L), cols: ctxOf(L).cols, items: [], skipped: 0, leg: [], ext: null, msg: '' };
     if (DASH && !D.sheets[L.sheet]) { m.msg = 'choose which sheet feeds this layer'; m.base = m.items; return m; }
     try {
-      ({ shapes: buildShapes, symbols: buildSymbols, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
+      ({ shapes: buildShapes, symbols: buildSymbols, density: buildDensity, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
     } catch (err) { m.msg = String(err && err.message || err); m.items = []; }
     m.base = m.items;          // all items; m.items becomes the part shown at the current time step
     return m;
@@ -219,6 +229,16 @@
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
     if (f.size) m.leg.push({ title: f.size, size: m.smax });
     m.items.sort((a, b) => (b.s || 0) - (a.s || 0));         // big first, small on top
+  }
+  function buildDensity(m, rows) {
+    const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
+    for (const r of rows) {
+      const lon = num(r[f.lon]), lat = num(r[f.lat]); if (lon == null || lat == null) continue;
+      const w = f.weight ? num(r[f.weight]) : 1; if (w == null || w <= 0) continue;
+      m.items.push({ row: r, lon, lat, w, t0: f.time ? tsOf(r[f.time]) : null }); stackExt(m, lon, lat);
+    }
+    m.wmax = Math.max(1e-9, ...m.items.map(i => i.w));
+    m.leg.push({ title: 'Density' + (f.weight ? ': ' + f.weight : ''), ramp: (DRAMPS[m.L.st.dramp] || DRAMPS.fire)[1], words: ['Low', 'High'] });
   }
   function buildPies(m, rows) {
     const f = m.f; if (!f.name && !(f.lon && f.lat)) { m.msg = 'choose a location (country name) field'; return; }
@@ -308,6 +328,37 @@
     let best = null, bd = 1e9;
     for (const it of m.items) { if (!it._s) continue; const d = (it._x - x) ** 2 + (it._y - y) ** 2, lim = Math.max(64, it._s * it._s); if (d < bd && d < lim) { bd = d; best = it; } }
     return best;
+  }
+
+  // ================= layer: density (heat map) =================
+  // Each point stamps a soft blob into a half-size offscreen canvas; where blobs overlap the alpha adds up, and that alpha is then mapped to the palette.
+  const dSprites = new Map(), dLuts = new Map();
+  function dSprite(r) {
+    const k = Math.max(2, Math.round(r)); let s = dSprites.get(k); if (s) return s;
+    s = document.createElement('canvas'); s.width = s.height = k * 2; const g = s.getContext('2d'), gr = g.createRadialGradient(k, k, 0, k, k, k);
+    gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.35, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, k * 2, k * 2);
+    if (dSprites.size > 40) dSprites.clear(); dSprites.set(k, s); return s;
+  }
+  function dLut(st) {
+    const key = (st.dramp || 'fire') + '|' + st.alpha; let l = dLuts.get(key); if (l) return l;
+    const R = (DRAMPS[st.dramp] || DRAMPS.fire)[1]; l = new Uint8ClampedArray(256 * 4);
+    for (let i = 0; i < 256; i++) { const t = i / 255, rgb = ramp(R, t).match(/\d+/g) || [255, 255, 255]; l[i * 4] = +rgb[0]; l[i * 4 + 1] = +rgb[1]; l[i * 4 + 2] = +rgb[2]; l[i * 4 + 3] = Math.min(1, t * 1.8) * 255 * st.alpha; }
+    dLuts.set(key, l); return l;
+  }
+  function drawDensity(c, env, m) {
+    const st = m.L.st, S = 0.5, w = Math.max(1, Math.ceil(env.W * S)), h = Math.max(1, Math.ceil(env.H * S));
+    const cv = m.dcv || (m.dcv = document.createElement('canvas')); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const g = cv.getContext('2d', { willReadFrequently: true }); g.clearRect(0, 0, w, h);
+    const r = 16 * (st.radius || 1) * Math.min(2.2, 0.75 + env.z * 0.22) * S, sp = dSprite(r), half = sp.width / 2, I = 0.14 * (st.intensity || 1), weighted = !!m.f.weight;
+    for (const it of m.items) {
+      const P = env.pt(it.lon, it.lat); if (!P) continue;
+      g.globalAlpha = Math.min(1, I * (weighted ? 0.35 + 0.65 * Math.sqrt(it.w / m.wmax) : 1)); g.drawImage(sp, P[0] * S - half, P[1] * S - half);
+    }
+    g.globalAlpha = 1;
+    const img = g.getImageData(0, 0, w, h), d = img.data, lut = dLut(st);
+    for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] * 4; d[i] = lut[a]; d[i + 1] = lut[a + 1]; d[i + 2] = lut[a + 2]; d[i + 3] = lut[a + 3]; }
+    g.putImageData(img, 0, 0);
+    c.imageSmoothingEnabled = true; c.drawImage(cv, 0, 0, env.W, env.H);
   }
 
   // ================= layer: pies =================
@@ -552,8 +603,8 @@
         if (lg.cat.size > cats.length) { c.fillStyle = '#666'; c.fillText('+' + (lg.cat.size - cats.length) + ' more', x + 30, yy); yy += ROW; }
       } else if (lg.ramp) {
         const gr = c.createLinearGradient(x + 10, 0, x + w - 10, 0); lg.ramp.forEach(s => gr.addColorStop(s[0], s[1]));
-        c.fillStyle = gr; c.fillRect(x + 10, yy - 5, w - 20, 9); c.fillStyle = '#222'; c.textAlign = 'left'; c.fillText(fmt(Math.round(lg.min)), x + 10, yy + 12);
-        c.textAlign = 'right'; c.fillText(fmt(Math.round(lg.max)), x + w - 10, yy + 12); c.textAlign = 'left'; yy += 30;
+        c.fillStyle = gr; c.fillRect(x + 10, yy - 5, w - 20, 9); c.fillStyle = '#222'; c.textAlign = 'left'; c.fillText(lg.words ? lg.words[0] : fmt(Math.round(lg.min)), x + 10, yy + 12);
+        c.textAlign = 'right'; c.fillText(lg.words ? lg.words[1] : fmt(Math.round(lg.max)), x + w - 10, yy + 12); c.textAlign = 'left'; yy += 30;
       }
     }
     c.textBaseline = 'alphabetic';
@@ -591,6 +642,7 @@
         if (!m.L.on || !m.items.length) continue;
         if (m.L.type === 'shapes') drawShapesFlat(c, v, m);
         else if (m.L.type === 'symbols') drawSymbols(c, env, m);
+        else if (m.L.type === 'density') drawDensity(c, env, m);
         else if (m.L.type === 'pies') drawPies(c, env, m);
         else { drawArcsFlat(c, v, m); drawArcNodes(c, env, m); }
       }
@@ -602,13 +654,14 @@
         if (!m.L.on || !m.items.length) continue;
         if (m.L.type === 'shapes') drawShapesGlobe(c, g, m);
         else if (m.L.type === 'symbols') drawSymbols(c, env, m);
+        else if (m.L.type === 'density') drawDensity(c, env, m);
         else if (m.L.type === 'pies') drawPies(c, env, m);
         else { drawArcsGlobe(c, g, m); drawArcNodes(c, env, m); }
       }
       drawLegend(c, g.W, g.H);
     }
   };
-  const HIT = { shapes: hitShapes, symbols: hitSymbols, pies: hitPies, arcs: hitArcs };
+  const HIT = { shapes: hitShapes, symbols: hitSymbols, density: () => null, pies: hitPies, arcs: hitArcs };      // a density layer is a surface, so it has nothing to hover
   function onHover(x, y, e, view) {
     const tipV = view || active();
     if (x == null) { setHover(null); tipV.hideTip(); return; }
@@ -752,6 +805,11 @@
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'size', 'Size by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
         '<label>Symbol<select data-l="' + L.id + '" data-k="st.shape">' + SHAPES.map(([k, n]) => '<option value="' + k + '"' + (L.st.shape === k ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
         palette(L) + fixedColor(L) + rng(L, 'size', 'Symbol size', 0.4, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
+    } else if (L.type === 'density') {
+      const st = L.st; if (st.radius == null) st.radius = 1; if (st.intensity == null) st.intensity = 1; if (!DRAMPS[st.dramp]) st.dramp = 'fire';
+      h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'weight', 'Weight by (optional)', numeric) + fsel(L, 'time', 'Time field', timeable) +
+        '<label>Palette<select data-l="' + L.id + '" data-k="st.dramp">' + Object.entries(DRAMPS).map(([k, v]) => '<option value="' + k + '"' + (st.dramp === k ? ' selected' : '') + '>' + v[0] + '</option>').join('') + '</select></label>' +
+        rng(L, 'radius', 'Radius', 0.3, 3, 0.05) + rng(L, 'intensity', 'Intensity', 0.2, 4, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05);
     } else if (L.type === 'pies') {
       h += fsel(L, 'name', 'Location (country)', nonSpatial) + fsel(L, 'lon', 'Longitude (optional)', numeric) + fsel(L, 'lat', 'Latitude (optional)', numeric) + fsel(L, 'slice', 'Slice (dimension)', nonSpatial) + fsel(L, 'value', 'Value (measure)', numeric) + rng(L, 'size', 'Pie size', 0.4, 2.5, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05);
     } else {
@@ -805,7 +863,7 @@
     let v = valueOf(t); if (t.dataset.k === 'st.top') v = +v;
     setPath(L, t.dataset.k, v); persist();
     if (t.type === 'range') { redraw(); tick(); return; }
-    if (t.dataset.k === 'on' || t.dataset.k.startsWith('st.') && !['st.ramp', 'st.color'].includes(t.dataset.k) && t.dataset.k !== 'st.top') { /* draw-time options */ }
+    if (t.dataset.k === 'on' || t.dataset.k.startsWith('st.') && !['st.ramp', 'st.dramp', 'st.color'].includes(t.dataset.k) && t.dataset.k !== 'st.top') { /* draw-time options */ }
     rebuild(); if (['type', 'lv', 'sheet', 'f.time'].includes(t.dataset.k)) renderPanel();
   }
   pbody.addEventListener('input', e => { if (e.target.type === 'range' || e.target.type === 'color') applyInput(e.target); });
