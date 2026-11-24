@@ -27,10 +27,11 @@
   const $ = id => document.getElementById(id);
 
   // ================= state =================
-  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6 };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
+  const G = { map: 'flat', style: 'dark', base: true, lf: '', sv: 'fit', fixed: null, rot: false, rs: 6, tm: 'period', tn: 3, tg: 'exact', tsp: 1.5, tloop: true };    // global options; lf = the "layer column", sv = start view (fit | world | fixed)
   // Two ways to get data: as a worksheet extension (the one sheet it sits on) or as a dashboard extension (one sheet per layer).
   const DASH = !!window.MS_DASHBOARD;
   let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null, sheets: {} };
+  const T = { steps: [], index: new Map(), idx: -1, playing: false, acc: 0, grain: 'day' };      // the time line shared by all layers
   let models = [], hover = null, phase = 0, homed = false, ext = null, raf = 0, saveT = 0;
 
   // ================= cell + column helpers =================
@@ -57,6 +58,56 @@
     p.rest = rest; return p;
   }
 
+  // ================= time =================
+  const dateCols = cx => cx.cols.filter(c => c.dataType === 'date' || c.dataType === 'date-time').map(c => c.name);
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function tsOf(cell) {            // a date / datetime / 4-digit year -> UTC milliseconds (dates become midnight UTC of the same calendar day)
+    const v = raw(cell); if (v == null || v === '') return null;
+    let d;
+    if (v instanceof Date) d = v;
+    else if (typeof v === 'number') return Number.isInteger(v) && v >= 1000 && v <= 3000 ? Date.UTC(v, 0, 1) : null;
+    else if (typeof v === 'string') { if (/^\d{4}$/.test(v.trim())) return Date.UTC(+v, 0, 1); const p = Date.parse(v); if (!isFinite(p)) return null; d = new Date(p); }
+    else return null;
+    if (isNaN(d.getTime())) return null;
+    if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    return d.getTime();
+  }
+  function bucket(ts) {
+    if (ts == null || G.tg === 'exact') return ts;
+    const d = new Date(ts), y = d.getUTCFullYear(), mo = d.getUTCMonth();
+    return G.tg === 'year' ? Date.UTC(y, 0, 1) : G.tg === 'month' ? Date.UTC(y, mo, 1) : Date.UTC(y, mo, d.getUTCDate());
+  }
+  function fmtStep(ts) {
+    const d = new Date(ts), y = d.getUTCFullYear();
+    if (T.grain === 'year') return String(y);
+    if (T.grain === 'month') return MON[d.getUTCMonth()] + ' ' + y;
+    if (T.grain === 'day') return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + y;
+    return d.toISOString().replace('T', ' ').slice(0, 16);
+  }
+  function buildTimeline() {
+    const set = new Set();
+    for (const m of models) if (m.L.on && m.f.time) for (const it of m.base) { it.t = bucket(it.t0); if (it.t != null) set.add(it.t); }
+    T.steps = [...set].sort((a, b) => a - b); T.index = new Map(T.steps.map((t, i) => [t, i]));
+    const all = f => T.steps.every(t => f(new Date(t)));
+    T.grain = all(d => d.getUTCMonth() === 0 && d.getUTCDate() === 1 && d.getUTCHours() === 0) ? 'year' : all(d => d.getUTCDate() === 1 && d.getUTCHours() === 0) ? 'month' : all(d => d.getUTCHours() === 0 && d.getUTCMinutes() === 0) ? 'day' : 'time';
+    if (T.idx >= T.steps.length) T.idx = T.steps.length - 1;
+    if (T.steps.length < 2) { T.idx = -1; T.playing = false; }
+  }
+  function timeVisible(it) {
+    if (it.t == null) return true;
+    const i = T.index.get(it.t), cur = T.idx;
+    return G.tm === 'cum' ? i <= cur : G.tm === 'trail' ? (i <= cur && i > cur - G.tn) : i === cur;
+  }
+  function applyTime() {
+    const on = T.steps.length > 1 && T.idx >= 0;
+    for (const m of models) m.items = on && m.f.time ? m.base.filter(timeVisible) : m.base;
+    updateNote();
+  }
+  function updateNote() {
+    note.textContent = models.map(m => m.L.on ? m.L.name + ' ' + fmt(m.items.length) + (m.items.length !== m.base.length ? ' of ' + fmt(m.base.length) : '') + (m.skipped ? ' (' + m.skipped + ' skipped)' : '') : '').filter(Boolean).join(' · ');
+  }
+
   // ================= layers =================
   let uid = 0;
   function newLayer(type, name, id) {
@@ -73,7 +124,7 @@
     const used = new Set([...oCols, ...dCols]);
     const meas = C.filter(c => isNumCol(c) && !isLon(c.name) && !isLat(c.name)).map(c => c.name);
     const plain = C.filter(c => c.dataType === 'string' && !used.has(c.name)).map(c => c.name);
-    return { spatial: spatialCols(cx), lon: lonC.filter(n => !used.has(n))[0] || lonC[0] || null, lat: latC.filter(n => !used.has(n))[0] || latC[0] || null, og, dg, meas, plain,
+    return { date: dateCols(cx), spatial: spatialCols(cx), lon: lonC.filter(n => !used.has(n))[0] || lonC[0] || null, lat: latC.filter(n => !used.has(n))[0] || latC[0] || null, og, dg, meas, plain,
       hasArcs: !!((og.name || og.lon) && (dg.name || dg.lon)) };
   }
   function autoLayers() {
@@ -101,19 +152,19 @@
     if (DASH) {
       const g = guess(cx);
       switch (L.type) {
-        case 'shapes': return { geom: pick('geom', g.spatial[0]), name: pick('name', g.plain[0]), color: pick('color', g.meas[0] || g.plain[1]), size: pick('size', null) };
-        case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]) };
+        case 'shapes': return { geom: pick('geom', g.spatial[0]), name: pick('name', g.plain[0]), color: pick('color', g.meas[0] || g.plain[1]), size: pick('size', null), time: pick('time', g.date[0]) };
+        case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]), time: pick('time', g.date[0]) };
         case 'pies': return { name: pick('name', g.plain[0]), lon: pick('lon', null), lat: pick('lat', null), slice: pick('slice', g.plain[1]), value: pick('value', g.meas[0]) };
-        default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]) };
+        default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]), time: pick('time', g.date[0]) };
       }
     }
     const loc = classify((e.location || []).map(x => x.name)), dst = classify((e.destination || []).map(x => x.name));
     const col = nm(e.color), siz = nm(e.size);
     switch (L.type) {
-      case 'shapes': return { geom: pick('geom', spatialCols(cx)[0]), name: pick('name', loc.name), color: pick('color', col), size: pick('size', siz) };
-      case 'symbols': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), size: pick('size', siz), color: pick('color', col) };
+      case 'shapes': return { geom: pick('geom', spatialCols(cx)[0]), name: pick('name', loc.name), color: pick('color', col), size: pick('size', siz), time: pick('time', dateCols(cx)[0]) };
+      case 'symbols': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), size: pick('size', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
       case 'pies': return { name: pick('name', loc.name), lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), slice: pick('slice', col), value: pick('value', siz) };
-      default: return { oname: pick('oname', loc.name), olon: pick('olon', loc.lon), olat: pick('olat', loc.lat), dname: pick('dname', dst.name), dlon: pick('dlon', dst.lon), dlat: pick('dlat', dst.lat), width: pick('width', siz), color: pick('color', col) };
+      default: return { oname: pick('oname', loc.name), olon: pick('olon', loc.lon), olat: pick('olat', loc.lat), dname: pick('dname', dst.name), dlon: pick('dlon', dst.lon), dlat: pick('dlat', dst.lat), width: pick('width', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
     }
   }
   const rowsFor = L => { const cx = ctxOf(L); return !DASH && G.lf && L.lv ? cx.rows.filter(r => str(r[G.lf]) === L.lv) : cx.rows; };
@@ -141,10 +192,11 @@
   // ================= build one layer =================
   function build(L) {
     const m = { L, f: fieldsOf(L), cols: ctxOf(L).cols, items: [], skipped: 0, leg: [], ext: null, msg: '' };
-    if (DASH && !D.sheets[L.sheet]) { m.msg = 'choose which sheet feeds this layer'; return m; }
+    if (DASH && !D.sheets[L.sheet]) { m.msg = 'choose which sheet feeds this layer'; m.base = m.items; return m; }
     try {
       ({ shapes: buildShapes, symbols: buildSymbols, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
     } catch (err) { m.msg = String(err && err.message || err); m.items = []; }
+    m.base = m.items;          // all items; m.items becomes the part shown at the current time step
     return m;
   }
   function buildShapes(m, rows) {
@@ -152,7 +204,7 @@
     for (const r of rows) {
       const v = raw(r[f.geom]); if (v == null) continue;
       const g = WKT.parse(v); if (!g) { m.skipped++; continue; }
-      m.items.push({ row: r, g, name: f.name ? str(r[f.name]) : '', s: f.size ? num(r[f.size]) : null });
+      m.items.push({ row: r, g, name: f.name ? str(r[f.name]) : '', s: f.size ? num(r[f.size]) : null, t0: f.time ? tsOf(r[f.time]) : null });
       stackExt(m, g.bbox[0], g.bbox[1]); stackExt(m, g.bbox[2], g.bbox[3]);
     }
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
@@ -161,7 +213,7 @@
     const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
     for (const r of rows) {
       const lon = num(r[f.lon]), lat = num(r[f.lat]); if (lon == null || lat == null) continue;
-      m.items.push({ row: r, lon, lat, name: f.name ? str(r[f.name]) : '', s: f.size ? num(r[f.size]) : null }); stackExt(m, lon, lat);
+      m.items.push({ row: r, lon, lat, name: f.name ? str(r[f.name]) : '', s: f.size ? num(r[f.size]) : null, t0: f.time ? tsOf(r[f.time]) : null }); stackExt(m, lon, lat);
     }
     m.smax = Math.max(1e-9, ...m.items.map(i => i.s || 0));
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
@@ -207,7 +259,7 @@
       if (!a || !b) { m.skipped++; continue; }
       if (a === b) continue;
       let w = f.width ? num(r[f.width]) : null; if (w != null && w < 0) w = 0;
-      m.items.push({ a, b, w, row: r });
+      m.items.push({ a, b, w, row: r, t0: f.time ? tsOf(r[f.time]) : null });
     }
     m.items.sort((x, y) => (y.w || 0) - (x.w || 0));
     m.wmax = Math.max(1e-9, ...m.items.map(r => r.w || 0)); m.nodes = [...nodes.values()];
@@ -224,6 +276,7 @@
     else if (kind === 'star') { for (let i = 0; i < 10; i++) { const r = i % 2 ? s * 0.45 : s * 1.1, a = -Math.PI / 2 + i * Math.PI / 5; c[i ? 'lineTo' : 'moveTo'](x + r * Math.cos(a), y + r * Math.sin(a)); } c.closePath(); }
     else { c.moveTo(x, y - s); c.lineTo(x + s * 0.85, y + s * 0.7); c.lineTo(x - s * 0.85, y + s * 0.7); c.closePath(); }
   }
+  const endsOf = st => st.ends || (st.arrows ? 'arrows' : 'dots');      // how a route's two ends look: dots | arrows | none
   function arrowHead(c, x, y, ux, uy, w) {
     const hl = 4 + w * 1.5, hw = hl * 0.45;
     c.beginPath(); c.moveTo(x, y); c.lineTo(x - ux * hl - uy * hw, y - uy * hl + ux * hw); c.lineTo(x - ux * hl + uy * hw, y - uy * hl - ux * hw); c.closePath(); c.fill();
@@ -293,7 +346,7 @@
         c.beginPath(); c.moveTo(x0, g.P0[1]); c.quadraticCurveTo(cx, g.C[1], x1, g.P1[1]); c.stroke();
       }
     }
-    if (st.arrows) for (const [r, g, w] of geo) {
+    if (endsOf(st) === 'arrows') for (const [r, g, w] of geo) {
       const dx = g.P1[0] - g.C[0], dy = g.P1[1] - g.C[1], L = Math.hypot(dx, dy) || 1; c.fillStyle = arcCol(m, r); c.globalAlpha = hover && hover.m === m ? (hover.it === r ? 1 : 0.18) : 0.9;
       for (const off of [-SW, 0, SW]) { const x = g.P1[0] + off; if (x < -20 || x > v.W + 20) continue; arrowHead(c, x, g.P1[1], dx / L, dy / L, w); }
     }
@@ -319,7 +372,7 @@
       const w = baseW(m, r, 1) * Math.min(1.6, 0.8 + g.k * 0.15) / 1.4 * 0.9 * 1.0;
       c.strokeStyle = arcCol(m, r); c.fillStyle = arcCol(m, r); c.lineWidth = w; c.globalAlpha = (hover && hover.m === m ? (hover.it === r ? 1 : 0.18) : 0.85) * Math.min(1, st.alpha + 0.2);
       c.beginPath(); let pen = false; pts.forEach(P => { if (!P) { pen = false; return; } pen ? c.lineTo(P[0], P[1]) : c.moveTo(P[0], P[1]); pen = true; }); c.stroke();
-      if (st.arrows) { const E = pts[n], Q = pts[n - 3]; if (E && Q) { const dx = E[0] - Q[0], dy = E[1] - Q[1], L = Math.hypot(dx, dy); if (L > 0.5) arrowHead(c, E[0], E[1], dx / L, dy / L, w); } }
+      if (endsOf(st) === 'arrows') { const E = pts[n], Q = pts[n - 3]; if (E && Q) { const dx = E[0] - Q[0], dy = E[1] - Q[1], L = Math.hypot(dx, dy); if (L > 0.5) arrowHead(c, E[0], E[1], dx / L, dy / L, w); } }
       lines.push([pts, w]); m.hits.push({ r, pts: pts.filter(Boolean) });
     }
     if (st.anim) {
@@ -330,10 +383,12 @@
     c.globalAlpha = 1; c.lineCap = 'butt';
   }
   function drawArcNodes(c, env, m) {
-    const nOrig = m.nodes.filter(n => n.o).length;
-    for (const n of m.nodes) {
+    const dots = endsOf(m.L.st) === 'dots';
+    const nodes = m.items === m.base ? m.nodes : [...new Set(m.items.flatMap(r => [r.a, r.b]))];      // only the places on the routes shown now
+    const nOrig = nodes.filter(n => n.o).length;
+    for (const n of nodes) {
       const P = env.pt(n.lon, n.lat); if (!P) continue;
-      c.beginPath(); c.arc(P[0], P[1], n.o ? 4.5 : 2.8, 0, 6.3); c.fillStyle = n.o ? '#ffd24a' : '#fff'; c.fill(); c.strokeStyle = n.o ? '#222' : 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
+      if (dots) { c.beginPath(); c.arc(P[0], P[1], n.o ? 4.5 : 2.8, 0, 6.3); c.fillStyle = n.o ? '#ffd24a' : '#fff'; c.fill(); c.strokeStyle = n.o ? '#222' : 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke(); }
       if (n.label && (env.z >= 2.2 || (n.o && nOrig <= 20 && env.z >= 1))) label(c, n.label, P[0] + 7, P[1] + 4, n.o);
     }
   }
@@ -471,7 +526,7 @@
 
   // ================= legend =================
   function drawLegend(c, W, H) {
-    const vis = models.filter(m => m.L.on && m.items.length && m.leg.length); if (!vis.length) return;
+    const vis = models.filter(m => m.L.on && m.base.length && m.leg.length); if (!vis.length) return;
     const multi = vis.length > 1, w = 178, ROW = 16; let h = 10;
     const blocks = [];
     for (const m of vis) {
@@ -577,15 +632,39 @@
   function tick() {
     cancelAnimationFrame(raf);
     const arcsAnim = models.some(m => m.L.on && m.L.type === 'arcs' && m.L.st.anim && m.items.length);
-    if (!arcsAnim && !spinning()) { lastT = 0; return; }
+    if (!arcsAnim && !spinning() && !T.playing) { lastT = 0; return; }
     const now = performance.now(), dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0; lastT = now;
     phase = (now / 45) % 15.5;
+    if (T.playing) { T.acc += dt; if (T.acc >= 1 / G.tsp) { T.acc = 0; stepTime(); } }
     if (spinning() && !dragging && !hover && now > resumeAt) globe.lon = wrap180(globe.lon - G.rs * dt);   // west to east, like the earth
     redraw(); raf = requestAnimationFrame(tick);
   }
   globe.cv.addEventListener('pointerdown', () => { dragging = true; });
   const letGo = () => { if (dragging) { dragging = false; resumeAt = performance.now() + 1500; } };
   globe.cv.addEventListener('pointerup', letGo); globe.cv.addEventListener('pointercancel', letGo);
+
+  // ---- time line (play button, slider) ----
+  const tl = $('tl'), tlPlay = $('tlPlay'), tlSlider = $('tlSlider'), tlLabel = $('tlLabel'), tlAll = $('tlAll');
+  function updateTL() {
+    const n = T.steps.length; tl.hidden = n < 2; if (n < 2) return;
+    tlSlider.max = n - 1; tlSlider.value = T.idx < 0 ? n - 1 : T.idx;
+    tlLabel.textContent = T.idx < 0 ? 'All dates' : fmtStep(T.steps[T.idx]) + '  (' + (T.idx + 1) + '/' + n + ')';
+    tlPlay.textContent = T.playing ? '\u275A\u275A' : '\u25B6'; tlPlay.title = T.playing ? 'Pause' : 'Play';
+  }
+  function stepTime() {
+    const n = T.steps.length; T.idx++;
+    if (T.idx >= n) { if (G.tloop) T.idx = 0; else { T.idx = n - 1; T.playing = false; } }
+    applyTime(); updateTL(); redraw();
+  }
+  tlPlay.addEventListener('click', () => {
+    const n = T.steps.length; if (n < 2) return;
+    if (T.playing) { T.playing = false; updateTL(); return; }
+    if (T.idx < 0 || T.idx >= n - 1) T.idx = 0;
+    T.playing = true; T.acc = 0; applyTime(); updateTL(); redraw(); tick();
+  });
+  tlSlider.addEventListener('input', () => { T.playing = false; T.idx = +tlSlider.value; applyTime(); updateTL(); redraw(); });
+  tlAll.addEventListener('click', () => { T.playing = false; T.idx = -1; applyTime(); updateTL(); redraw(); });
+  tl.addEventListener('pointerdown', e => e.stopPropagation()); tl.addEventListener('wheel', e => e.stopPropagation());
 
   // ---- fit the views to the data ----
   const toLon = cx => ((cx * 360 - 180 + 540) % 360 + 360) % 360 - 180, toLat = cy => (2 * Math.atan(Math.exp(2 * Math.PI * (0.5 - cy))) - Math.PI / 2) / D2R;
@@ -609,14 +688,14 @@
 
   // ================= data =================
   function rebuild() {
-    models = layers.map(build); ext = null;
+    models = layers.map(build); ext = null; buildTimeline(); applyTime(); updateTL();
     models.forEach(m => { if (m.L.on && m.ext) { ext = ext || { a: 180, b: -180, c: 90, d: -90 }; ext.a = Math.min(ext.a, m.ext.a); ext.b = Math.max(ext.b, m.ext.b); ext.c = Math.min(ext.c, m.ext.c); ext.d = Math.max(ext.d, m.ext.d); } });
-    const total = models.reduce((a, m) => a + (m.L.on ? m.items.length : 0), 0);
+    const total = models.reduce((a, m) => a + (m.L.on ? m.base.length : 0), 0);
     if (!layers.length && DASH) show('<b>Map studio (dashboard)</b><br>Add worksheets to this dashboard (they can be hidden), one per layer, with the fields it needs on <b>Detail</b>: a spatial field, or longitude and latitude, or origin and destination. Then open <b>Layers</b> and add a layer for each sheet.');
     else if (!layers.length) show('<b>Map studio</b><br>Put a spatial field (e.g. Geometry) on <b>Detail</b>, or a longitude and latitude on <b>Location</b>, or open the <b>Layers</b> panel and add a layer. Several data sets can be combined with a union and split into layers.');
     else if (!total) show('<b>Nothing to draw yet</b><br>' + models.map(m => esc(m.L.name) + ': ' + esc(m.msg || 'no matching rows')).join('<br>') + '<br>Open the Layers panel to choose fields.');
     else show('');
-    note.textContent = models.map(m => m.L.on ? m.L.name + ' ' + fmt(m.items.length) + (m.skipped ? ' (' + m.skipped + ' skipped)' : '') : '').filter(Boolean).join(' · ');
+    updateNote();
     if (!homed && (ext || G.sv !== 'fit')) { if (applyFit() !== false) { flat.reset(); globe.reset(); homed = true; } } else if (ext || G.sv !== 'fit') applyFit();
     tick(); redraw();
   }
@@ -624,11 +703,13 @@
   function loadSettings() {
     const g = TX.settings.get;
     G.map = g('map', G.map); G.style = g('style', G.style); G.base = g('base', '1') === '1'; G.lf = g('lf', ''); G.sv = g('sv', 'fit'); G.rot = g('rot', '0') === '1'; G.rs = parseFloat(g('rs', '6')) || 6; try { G.fixed = JSON.parse(g('fixed', 'null')); } catch (e) { G.fixed = null; }
+    G.tm = g('tm', 'period'); G.tn = parseInt(g('tn', '3'), 10) || 3; G.tg = g('tg', 'exact'); G.tsp = parseFloat(g('tsp', '1.5')) || 1.5; G.tloop = g('tloop', '1') === '1';
     try { const s = g('layers', ''); if (s) { layers = JSON.parse(s); auto = false; } } catch (e) { /* ignore a damaged value */ }
   }
   function persist() {
     clearTimeout(saveT); saveT = setTimeout(() => {
       TX.settings.set('map', G.map); TX.settings.set('style', G.style); TX.settings.set('base', G.base ? '1' : '0'); TX.settings.set('lf', G.lf); TX.settings.set('sv', G.sv); TX.settings.set('rot', G.rot ? '1' : '0'); TX.settings.set('rs', String(G.rs)); TX.settings.set('fixed', JSON.stringify(G.fixed));
+      TX.settings.set('tm', G.tm); TX.settings.set('tn', String(G.tn)); TX.settings.set('tg', G.tg); TX.settings.set('tsp', String(G.tsp)); TX.settings.set('tloop', G.tloop ? '1' : '0');
       TX.settings.set('layers', JSON.stringify(layers));
     }, 400);
   }
@@ -648,7 +729,7 @@
     const list = ctxOf(L).cols.filter(pred || (() => true)).map(c => c.name); if (cur && cur !== '-' && !list.includes(cur)) list.unshift(cur);
     return h + list.map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(trunc(n, 28)) + '</option>').join('');
   };
-  const any = () => true, numeric = c => isNumCol(c), spatial = c => c.dataType === 'spatial', nonSpatial = c => c.dataType !== 'spatial';
+  const timeable = c => c.dataType === 'date' || c.dataType === 'date-time' || c.dataType === 'int', any = () => true, numeric = c => isNumCol(c), spatial = c => c.dataType === 'spatial', nonSpatial = c => c.dataType !== 'spatial';
   function fsel(L, key, label, pred) { return '<label>' + label + '<select data-l="' + L.id + '" data-k="f.' + key + '">' + optsOf(L, key, pred) + '</select></label>'; }
   function rng(L, key, label, min, max, step) { return '<label>' + label + '<input type="range" data-l="' + L.id + '" data-k="st.' + key + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + L.st[key] + '"></label>'; }
   function chk(L, key, label) { return '<label class="chk"><input type="checkbox" data-l="' + L.id + '" data-k="st.' + key + '"' + (L.st[key] ? ' checked' : '') + '>&nbsp;' + label + '</label>'; }
@@ -665,10 +746,10 @@
       h += '<label>Rows where ' + esc(trunc(G.lf, 14)) + ' =<select data-l="' + L.id + '" data-k="lv"><option value="">(all rows)</option>' + vals.map(v => '<option value="' + esc(v) + '"' + (v === L.lv ? ' selected' : '') + '>' + esc(trunc(v, 26)) + '</option>').join('') + '</select></label>';
     }
     if (L.type === 'shapes') {
-      h += fsel(L, 'geom', 'Geometry', spatial) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'size', 'Size by (points)', numeric) + palette(L) + fixedColor(L) +
+      h += fsel(L, 'geom', 'Geometry', spatial) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'size', 'Size by (points)', numeric) + fsel(L, 'time', 'Time field', timeable) + palette(L) + fixedColor(L) +
         rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + rng(L, 'lw', 'Line width', 0.3, 4, 0.1) + chk(L, 'outline', 'Outline') + chk(L, 'labels', 'Labels');
     } else if (L.type === 'symbols') {
-      h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'size', 'Size by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) +
+      h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'size', 'Size by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
         '<label>Symbol<select data-l="' + L.id + '" data-k="st.shape">' + SHAPES.map(([k, n]) => '<option value="' + k + '"' + (L.st.shape === k ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
         palette(L) + fixedColor(L) + rng(L, 'size', 'Symbol size', 0.4, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
     } else if (L.type === 'pies') {
@@ -676,9 +757,9 @@
     } else {
       h += fsel(L, 'oname', 'Origin name', nonSpatial) + fsel(L, 'olon', 'Origin longitude', numeric) + fsel(L, 'olat', 'Origin latitude', numeric) +
         fsel(L, 'dname', 'Destination name', nonSpatial) + fsel(L, 'dlon', 'Destination longitude', numeric) + fsel(L, 'dlat', 'Destination latitude', numeric) +
-        fsel(L, 'width', 'Width by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + palette(L) + fixedColor(L) +
+        fsel(L, 'width', 'Width by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) + palette(L) + fixedColor(L) +
         '<label>Routes shown<select data-l="' + L.id + '" data-k="st.top">' + [[0, 'All'], [10, 'Top 10'], [25, 'Top 25'], [50, 'Top 50'], [100, 'Top 100'], [250, 'Top 250']].map(([v, n]) => '<option value="' + v + '"' + (+L.st.top === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
-        rng(L, 'lw', 'Line width', 0.3, 3, 0.05) + rng(L, 'curve', 'Curve', 0, 0.5, 0.02) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'arrows', 'Arrowheads') + chk(L, 'anim', 'Animate flow');
+        rng(L, 'lw', 'Line width', 0.3, 3, 0.05) + rng(L, 'curve', 'Curve', 0, 0.5, 0.02) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + '<label>Route ends<select data-l="' + L.id + '" data-k="st.ends">' + [['dots', 'Dots'], ['arrows', 'Arrowheads'], ['none', 'Plain lines']].map(([v, n]) => '<option value="' + v + '"' + (endsOf(L.st) === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' + chk(L, 'anim', 'Animate flow');
     }
     return h;
   }
@@ -691,6 +772,12 @@
       '<label title="Where the map opens, and where the home button goes">Start view<select data-g="sv"><option value="fit"' + (G.sv === 'fit' ? ' selected' : '') + '>Fit to the data</option><option value="world"' + (G.sv === 'world' ? ' selected' : '') + '>Whole world</option><option value="fixed"' + (G.sv === 'fixed' ? ' selected' : '') + '>Saved view</option></select></label>' +
       '<div class="sv"><button type="button" data-act="setview" title="Pan and zoom first, then press this">Use current view as start</button>' + (G.sv === 'fixed' && !G.fixed ? ' <span class="sub">none saved yet</span>' : '') + '</div>' +
       (DASH ? '' : '<label title="A column that says which layer each row belongs to, e.g. after a union of several tables">Layer column<select data-g="lf"><option value="">(none)</option>' + D.cols.filter(nonSpatial).map(c => '<option value="' + esc(c.name) + '"' + (c.name === G.lf ? ' selected' : '') + '>' + esc(trunc(c.name, 26)) + '</option>').join('') + '</select></label>') + '</div>';
+    h += '<div class="grp"><div class="lh">Time line <span class="sub">' + (T.steps.length > 1 ? '(' + T.steps.length + ' steps)' : '(no time field in use)') + '</span></div>' + (T.steps.length > 1 ?
+      '<label>Show<select data-g="tm"><option value="period"' + (G.tm === 'period' ? ' selected' : '') + '>This step only</option><option value="cum"' + (G.tm === 'cum' ? ' selected' : '') + '>Everything up to this step</option><option value="trail"' + (G.tm === 'trail' ? ' selected' : '') + '>The last few steps</option></select></label>' +
+      (G.tm === 'trail' ? '<label>Steps kept<input type="range" data-g="tn" min="2" max="12" step="1" value="' + G.tn + '"></label>' : '') +
+      '<label>Step by<select data-g="tg"><option value="exact"' + (G.tg === 'exact' ? ' selected' : '') + '>Each date value</option><option value="year"' + (G.tg === 'year' ? ' selected' : '') + '>Year</option><option value="month"' + (G.tg === 'month' ? ' selected' : '') + '>Month</option><option value="day"' + (G.tg === 'day' ? ' selected' : '') + '>Day</option></select></label>' +
+      '<label>Speed<input type="range" data-g="tsp" min="0.25" max="6" step="0.25" value="' + G.tsp + '"></label><label class="chk"><input type="checkbox" data-g="tloop"' + (G.tloop ? ' checked' : '') + '>&nbsp;Loop</label>'
+      : '<div class="sub">Choose a date field under <b>Time field</b> in a layer to get a play button.</div>') + '</div>';
     h += '<div class="lh">Layers <span class="sub">(top of the list is drawn last)</span></div>';
     [...layers].reverse().forEach(L => {
       h += '<details class="lyr" data-id="' + L.id + '"' + (openIds.has(L.id) ? ' open' : '') + '><summary><button type="button" data-act="toggle" class="chev" title="Show / hide the settings"></button><input type="checkbox" data-l="' + L.id + '" data-k="on" title="Show / hide"' + (L.on ? ' checked' : '') + '> <input class="nm" type="text" data-l="' + L.id + '" data-k="name" value="' + esc(L.name) + '"> ' +
@@ -708,6 +795,8 @@
     if (t.dataset.g) {
       const k = t.dataset.g, v = valueOf(t); G[k] = v; claim(); persist();
       if (k === 'rot' || k === 'rs') { tick(); if (k === 'rot') renderPanel(); return; }
+      if (k === 'tg') { rebuild(); renderPanel(); return; }
+      if (k === 'tm' || k === 'tn' || k === 'tsp' || k === 'tloop') { applyTime(); redraw(); updateTL(); if (k === 'tm') renderPanel(); return; }
       if (k === 'sv') { applyFit(); flat.reset(); globe.reset(); homed = true; renderPanel(); redraw(); return; }
       if (k === 'map') { applyMap(); renderPanel(); } else if (k === 'style' || k === 'base') { applyStyle(); redraw(); } else { rebuild(); renderPanel(); }
       return;
@@ -717,7 +806,7 @@
     setPath(L, t.dataset.k, v); persist();
     if (t.type === 'range') { redraw(); tick(); return; }
     if (t.dataset.k === 'on' || t.dataset.k.startsWith('st.') && !['st.ramp', 'st.color'].includes(t.dataset.k) && t.dataset.k !== 'st.top') { /* draw-time options */ }
-    rebuild(); if (['type', 'lv', 'sheet'].includes(t.dataset.k)) renderPanel();
+    rebuild(); if (['type', 'lv', 'sheet', 'f.time'].includes(t.dataset.k)) renderPanel();
   }
   pbody.addEventListener('input', e => { if (e.target.type === 'range' || e.target.type === 'color') applyInput(e.target); });
   pbody.addEventListener('change', e => { if (e.target.type !== 'range' && e.target.type !== 'color') applyInput(e.target); });
@@ -749,7 +838,7 @@
         enc: { location: [{ name: 'Admin' }], color: [{ name: 'Continent' }] } };
     }
     const NULL = { value: null, nativeValue: null, formattedValue: 'Null' }, rows = [];
-    const keys = ['Layer', 'Admin', 'COLLECT(Geometry)', 'SUM(Score)', 'Peak', 'Longitude', 'Latitude', 'SUM(Altitude)', 'Origin City', 'Origin Longitude', 'Origin Latitude', 'Destination City', 'Destination Longitude', 'Destination Latitude', 'Destination Region', 'SUM(Flights)'];
+    const keys = ['Layer', 'Admin', 'COLLECT(Geometry)', 'SUM(Score)', 'Peak', 'Longitude', 'Latitude', 'SUM(Altitude)', 'Origin City', 'Origin Longitude', 'Origin Latitude', 'Destination City', 'Destination Longitude', 'Destination Latitude', 'Destination Region', 'SUM(Flights)', 'Year'];
     const mk = o => { const r = {}; keys.forEach(k => { r[k] = o[k] === undefined ? NULL : o[k]; }); return r; };
     const hash = s => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 100; };
     for (const c of window.WORLD) {
@@ -759,10 +848,10 @@
     }
     (await TX.fetchCSV('../data/mountains.csv')).filter(r => Number(r.Altitude) >= 3500).forEach(r => rows.push(mk({ Layer: TX.cell('Peaks'), Peak: TX.cell(r.Peak), Longitude: TX.cell(Number(r.Longitude)), Latitude: TX.cell(Number(r.Latitude)), 'SUM(Altitude)': TX.cell(Number(r.Altitude), fmt(Number(r.Altitude))) })));
     const agg = new Map();
-    (await TX.fetchCSV('../data/australia_flights.csv')).filter(r => Number(r.Year) >= 2017).forEach(r => { const k = r['Origin City'] + '|' + r['Destination City']; const a = agg.get(k) || { r, n: 0 }; a.n += Number(r.Flights); agg.set(k, a); });
-    agg.forEach(({ r, n }) => rows.push(mk({ Layer: TX.cell('Flights'), 'Origin City': TX.cell(r['Origin City']), 'Origin Longitude': TX.cell(Number(r['Origin Longitude'])), 'Origin Latitude': TX.cell(Number(r['Origin Latitude'])),
+    (await TX.fetchCSV('../data/australia_flights.csv')).filter(r => Number(r.Year) >= 2017).forEach(r => { const k = r['Origin City'] + '|' + r['Destination City'] + '|' + r.Year; const a = agg.get(k) || { r, n: 0 }; a.n += Number(r.Flights); agg.set(k, a); });
+    agg.forEach(({ r, n }) => rows.push(mk({ Year: { value: new Date(Number(r.Year), 0, 1), formattedValue: r.Year }, Layer: TX.cell('Flights'), 'Origin City': TX.cell(r['Origin City']), 'Origin Longitude': TX.cell(Number(r['Origin Longitude'])), 'Origin Latitude': TX.cell(Number(r['Origin Latitude'])),
       'Destination City': TX.cell(r['Destination City']), 'Destination Longitude': TX.cell(Number(r['Destination Longitude'])), 'Destination Latitude': TX.cell(Number(r['Destination Latitude'])), 'Destination Region': TX.cell(r['Destination Region']), 'SUM(Flights)': TX.cell(n, fmt(n)) })));
-    const cols = keys.map(k => ({ name: k, dataType: k === 'COLLECT(Geometry)' ? 'spatial' : /Score|Altitude|Flights|Longitude|Latitude/.test(k) ? 'float' : 'string' }));
+    const cols = keys.map(k => ({ name: k, dataType: k === 'COLLECT(Geometry)' ? 'spatial' : k === 'Year' ? 'date' : /Score|Altitude|Flights|Longitude|Latitude/.test(k) ? 'float' : 'string' }));
     if (DASH) {          // one sheet per source table, each with only its own columns (like separate worksheets)
       const sheets = {};
       for (const name of ['Countries', 'Peaks', 'Flights']) {

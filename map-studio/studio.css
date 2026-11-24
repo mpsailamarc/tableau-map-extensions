@@ -21,3 +21,10 @@ details.studio .add { display: flex; gap: 6px; }
 details.studio .add select { flex: 1; max-width: none; }
 details.studio input[type=color] { width: 28px; height: 20px; padding: 0; border: 1px solid rgba(0,0,0,.3); }
 details.studio .sv { margin-top: -2px; }
+/* time line */
+.tl { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.92); border: 1px solid rgba(0,0,0,.2); border-radius: 18px; padding: 4px 12px; box-shadow: 0 1px 6px rgba(0,0,0,.2); max-width: calc(100% - 200px); }
+.tl[hidden] { display: none; }
+.tl button { border: 1px solid rgba(0,0,0,.25); background: #fff; border-radius: 12px; min-width: 28px; height: 24px; padding: 0 8px; cursor: pointer; font-size: 12px; }
+.tl input[type=range] { width: 220px; min-width: 80px; flex: 1 1 140px; }
+.tl span { font-size: 12px; color: #222; min-width: 96px; white-space: nowrap; }
