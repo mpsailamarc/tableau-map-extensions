@@ -830,6 +830,13 @@
     }
     return h;
   }
+  function diagText() {
+    const i = TX.settings.info, hm = d => d.toTimeString().slice(0, 8);
+    if (TX.demo) return 'Demo mode: settings are not stored.';
+    return 'At start the workbook held ' + (i.loaded == null ? '?' : i.loaded) + ' saved setting(s)' + (i.restored.length ? ', and ' + i.restored.length + ' were restored from the copy kept on this computer' : '') + '. ' +
+      (i.last ? (i.last.ok ? 'Last save ' + hm(i.last.at) + ': OK, workbook now holds ' + i.last.keys + ' setting(s).' : 'Last save ' + hm(i.last.at) + ' FAILED: ' + i.last.error) : 'Nothing saved yet this session.');
+  }
+  TX.settings.onSaved = () => { const e = $('diag'); if (e) e.textContent = diagText(); };
   function renderPanel() {
     const sc = pbody.scrollTop;
     let h = '<div class="grp"><label>Map<select data-g="map"><option value="flat"' + (G.map === 'flat' ? ' selected' : '') + '>Flat</option><option value="globe"' + (G.map === 'globe' ? ' selected' : '') + '>Globe (3D)</option></select></label>' +
@@ -853,7 +860,7 @@
     h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
     if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'Layers were set up automatically from the Marks card. Change anything here to take control.') + '</div>';
     const me = [...document.scripts].find(s => /map-studio\.js/.test(s.src)), ver = me && (me.src.match(/[?&]v=(\d+)/) || [])[1];
-    h += '<div class="sv"><button type="button" data-act="reload" title="Load the latest version of this extension. Your settings are kept in the workbook">Reload extension</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div>';
+    h += '<div class="sv"><button type="button" data-act="reload" title="Load the latest version of this extension. Your settings are kept in the workbook">Reload extension</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div><div class="sub" id="diag">' + esc(diagText()) + '</div>';
     pbody.innerHTML = h; pbody.scrollTop = sc;
   }
   const byId = id => layers.find(l => l.id === id);
@@ -889,7 +896,7 @@
     }
     if (b.dataset.act === 'reload') {          // settings live in the workbook, so they come back after the page reloads
       b.disabled = true; b.textContent = 'Saving settings…'; clearTimeout(saveT); if (!auto) writeSettings();
-      const urls = [...document.querySelectorAll('script[src],link[rel=stylesheet][href]')].map(e => e.src || e.href).filter(u => u.startsWith(location.origin));
+      const urls = [location.href.split('#')[0], ...[...document.querySelectorAll('script[src],link[rel=stylesheet][href]')].map(e => e.src || e.href).filter(u => u.startsWith(location.origin))];
       TX.settings.save().then(() => { b.textContent = 'Reloading…'; return Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null))); }).then(() => location.reload())      // reload only once the settings are safely saved in the workbook
         .catch(err => { b.disabled = false; b.textContent = 'Reload extension'; show('<b>Not reloaded: your settings could not be saved</b><br>' + esc(String(err && err.message || err)) + '<br>Nothing was changed. Save the workbook and try again.'); });
       return;
