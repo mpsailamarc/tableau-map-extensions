@@ -43,6 +43,7 @@
   let models = [], hover = null, phase = 0, homed = false, ext = null, raf = 0, saveT = 0;
 
   // ================= cell + column helpers =================
+  const maxOf = (floor, arr, f) => { let mx = floor; for (let i = 0; i < arr.length; i++) { const v = f(arr[i]); if (v > mx) mx = v; } return mx; };      // Math.max(...) overflows the stack on big row counts
   const raw = c => (c == null ? null : (c.nativeValue !== undefined ? c.nativeValue : c.value));
   const isNull = c => { const v = raw(c); return v == null || v === ''; };
   const num = c => { const v = raw(c); if (v == null || v === '') return null; const n = Number(v); return isFinite(n) ? n : null; };
@@ -240,7 +241,7 @@
       const lon = num(r[f.lon]), lat = num(r[f.lat]); if (lon == null || lat == null) continue;
       m.items.push({ row: r, lon, lat, name: f.name ? str(r[f.name]) : '', s: f.size ? num(r[f.size]) : null, t0: f.time ? tsOf(r[f.time]) : null }); stackExt(m, lon, lat);
     }
-    m.smax = Math.max(1e-9, ...m.items.map(i => i.s || 0));
+    m.smax = maxOf(1e-9, m.items, i => i.s || 0);
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
     if (f.size) m.leg.push({ title: f.size, size: m.smax });
     m.items.sort((a, b) => (b.s || 0) - (a.s || 0));         // big first, small on top
@@ -253,7 +254,7 @@
       if (lon == null || lat == null) { if (!name) continue; const g = lookup(name); if (!g) { m.skipped++; continue; } lon = g.lon; lat = g.lat; }
       m.items.push({ row: r, lon, lat, name, s: f.height ? num(r[f.height]) : null, t0: f.time ? tsOf(r[f.time]) : null }); stackExt(m, lon, lat);
     }
-    m.smax = Math.max(1e-9, ...m.items.map(i => i.s || 0));
+    m.smax = maxOf(1e-9, m.items, i => i.s || 0);
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
     if (f.height) m.leg.push({ title: f.height, size: m.smax, bar: true });
   }
@@ -264,7 +265,7 @@
       const w = f.weight ? num(r[f.weight]) : 1; if (w == null || w <= 0) continue;
       m.items.push({ row: r, lon, lat, w, t0: f.time ? tsOf(r[f.time]) : null }); stackExt(m, lon, lat);
     }
-    m.wmax = Math.max(1e-9, ...m.items.map(i => i.w));
+    m.wmax = maxOf(1e-9, m.items, i => i.w);
     m.leg.push({ title: 'Density' + (f.weight ? ': ' + f.weight : ''), ramp: (DRAMPS[m.L.st.dramp] || DRAMPS.fire)[1], words: ['Low', 'High'] });
   }
   function buildPies(m, rows) {
@@ -284,7 +285,7 @@
     const order = ['gold', 'silver', 'bronze'];
     const names = [...tot.keys()].sort((a, b) => { const ia = order.indexOf(a.toLowerCase()), ib = order.indexOf(b.toLowerCase()); return ia >= 0 && ib >= 0 ? ia - ib : tot.get(b) - tot.get(a); });
     let ci = 0; m.pcol = new Map(); names.forEach(n => m.pcol.set(n, MEDAL[n.toLowerCase()] || PAL[ci++ % PAL.length]));
-    m.pnames = names; m.items = [...pies.values()].sort((a, b) => b.n - a.n); m.pmax = Math.max(1, ...m.items.map(p => p.n));
+    m.pnames = names; m.items = [...pies.values()].sort((a, b) => b.n - a.n); m.pmax = maxOf(1, m.items, p => p.n);
     m.leg.push({ title: f.slice || 'Total', cat: m.pcol, max: 8 });
     if (f.value) m.leg.push({ title: f.value, size: m.pmax });
   }
@@ -309,7 +310,7 @@
       m.items.push({ a, b, w, row: r, t0: f.time ? tsOf(r[f.time]) : null });
     }
     m.items.sort((x, y) => (y.w || 0) - (x.w || 0));
-    m.wmax = Math.max(1e-9, ...m.items.map(r => r.w || 0)); m.nodes = [...nodes.values()];
+    m.wmax = maxOf(1e-9, m.items, r => r.w || 0); m.nodes = [...nodes.values()];
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
     if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true });
   }
@@ -593,7 +594,7 @@
   function pointShapes(c, m, it, env) {
     for (const p of it.g.pts) {
       const P = env.pt(p[0], p[1]); if (!P) continue;
-      const s = (it.s != null ? 3 + Math.sqrt(Math.max(0, it.s) / Math.max(1e-9, m.smaxS || (m.smaxS = Math.max(1e-9, ...m.items.map(i => i.s || 0))))) * 8 : 4) * m.L.st.size;
+      const s = (it.s != null ? 3 + Math.sqrt(Math.max(0, it.s) / Math.max(1e-9, m.smaxS || (m.smaxS = maxOf(1e-9, m.items, i => i.s || 0)))) * 8 : 4) * m.L.st.size;
       c.beginPath(); c.arc(P[0], P[1], s, 0, 6.3); c.globalAlpha = m.L.st.alpha; c.fillStyle = colOf(m, it); c.fill(); c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 0.6; c.stroke();
     }
   }
