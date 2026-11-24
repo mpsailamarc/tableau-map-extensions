@@ -69,13 +69,14 @@
       const flush = () => { chain = chain.then(async () => {
         const keys = Object.keys(pending); if (!keys.length) return;
         const s = tableau.extensions.settings, batch = {}; keys.forEach(k => { batch[k] = pending[k]; delete pending[k]; });
-        try { keys.forEach(k => s.set(k, batch[k])); await s.saveAsync(); info.last = { ok: true, at: new Date(), keys: Object.keys(s.getAll()).length }; if (api.onSaved) api.onSaved(); }
+        try { keys.forEach(k => s.set(k, batch[k])); for (let a = 0; ; a++) { try { await s.saveAsync(); break; } catch (e) { if (a >= 3) throw e; await new Promise(r => setTimeout(r, 1000 * (a + 1))); } }      // Tableau sometimes refuses a save for a moment: try again a few times
+          info.last = { ok: true, at: new Date(), keys: Object.keys(s.getAll()).length }; if (api.onSaved) api.onSaved(); }
         catch (err) { keys.forEach(k => { if (!(k in pending)) pending[k] = batch[k]; }); info.last = { ok: false, at: new Date(), error: String(err && err.message || err) }; if (api.onSaved) api.onSaved(); throw err; }      // keep the values so the next save retries them
       }); const p = chain; chain = chain.catch(() => {}); return p; };
       const api = {
         onError: null, onSaved: null, info,
         get(k, dflt) { if (k in pending) return pending[k]; try { const v = tableau.extensions.settings.get(k); return v == null ? dflt : v; } catch (e) { return dflt; } },
-        set(k, v) { pending[k] = v; writeB(k, v); clearTimeout(timer); timer = setTimeout(() => { api.save().catch(err => { console.error('Could not save settings', err); if (api.onError) api.onError(err); }); }, 300); },
+        set(k, v) { pending[k] = v; writeB(k, v); clearTimeout(timer); timer = setTimeout(() => { api.save().catch(err => { console.error('Could not save settings', err); if (api.onError) api.onError(err); clearTimeout(timer); timer = setTimeout(() => api.save().catch(() => {}), 8000); }); }, 300); },
         save() { clearTimeout(timer); if (demo) { Object.keys(pending).forEach(k => delete pending[k]); return Promise.resolve(); } return flush(); },
         restore() {          // call once the Extensions API is ready: fill in whatever the workbook lacks from the local copy
           if (demo) return;

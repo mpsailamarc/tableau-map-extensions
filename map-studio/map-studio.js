@@ -839,7 +839,7 @@
     return 'At start the workbook held ' + (i.loaded == null ? '?' : i.loaded) + ' saved setting(s)' + (i.restored.length ? ', and ' + i.restored.length + ' were restored from the copy kept on this computer' : '') + '. ' +
       'Layers now: ' + layers.length + '. ' + (i.last ? (i.last.ok ? 'Last save ' + hm(i.last.at) + ': OK, workbook now holds ' + i.last.keys + ' setting(s).' : 'Last save ' + hm(i.last.at) + ' FAILED: ' + i.last.error) : 'Nothing saved yet this session.');
   }
-  TX.settings.onSaved = () => { const e = $('diag'); if (e) e.textContent = diagText(); };
+  TX.settings.onSaved = () => { const e = $('diag'); if (e) e.textContent = diagText(); const i = TX.settings.info; if (i.last && i.last.ok && /could not be saved/.test(hint.innerHTML)) show(''); };
   function renderPanel() {
     const sc = pbody.scrollTop;
     let h = '<div class="grp"><label>Map<select data-g="map"><option value="flat"' + (G.map === 'flat' ? ' selected' : '') + '>Flat</option><option value="globe"' + (G.map === 'globe' ? ' selected' : '') + '>Globe (3D)</option></select></label>' +
