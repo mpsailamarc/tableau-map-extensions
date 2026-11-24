@@ -267,8 +267,8 @@
     }
     m.items.sort((a, b) => (a.t0 == null || b.t0 == null ? a.i - b.i : a.t0 - b.t0 || a.i - b.i));          // oldest first, so a track is drawn in the order it was travelled
     m.wmax = maxOf(1e-9, m.items, i => i.w || 0);
-    const cf = m.L.f.color === '-' ? null : (f.color || f.group), lg = colorize(m.items, i => i.row[cf], cf, m.L.st); if (lg) { lg.max = 8; m.leg.push(lg); }
-    if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true });
+    const cf = m.L.f.color === '-' ? null : (f.color || f.group), lg = colorize(m.items, i => i.row[cf], cf, m.L.st); if (lg) { lg.max = 8; m.leg.push(lg); } else m.leg.push({ swatch: true, title: 'All tracks', col: () => m.L.st.color || STYLE[G.style].dflt });
+    if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true, col: () => m.L.st.color || STYLE[G.style].dflt });
   }
   function buildHex(m, rows) {
     const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
@@ -798,7 +798,7 @@
   function drawLegend(c, W, H) {
     const vis = models.filter(m => m.L.on && m.L.st.legend !== false && m.base.length && m.leg.length); if (!vis.length) return;
     const w = 178, ROW = 16, GAP = 8;
-    const heightOf = m => { let h = 10 + 17; for (const lg of m.leg) { let ht = 16; if (lg.cat) ht += Math.min(lg.cat.size, lg.max || 6) * ROW + (lg.cat.size > (lg.max || 6) ? ROW : 0); else if (lg.ramp) ht += 30; else if (lg.size != null) ht = 18; h += ht; } return h + 4; };
+    const heightOf = m => { let h = 10 + 17; for (const lg of m.leg) { let ht = 16; if (lg.cat) ht += Math.min(lg.cat.size, lg.max || 6) * ROW + (lg.cat.size > (lg.max || 6) ? ROW : 0); else if (lg.ramp) ht += 30; else if (lg.size != null || lg.swatch) ht = 18; h += ht; } return h + 4; };
     // one card per layer, stacked up from the bottom left; a new column starts when the next card would not fit
     let x = 8, bottom = H - 20; c.textBaseline = 'middle';
     for (const m of vis) {
@@ -809,6 +809,8 @@
       c.font = 'bold 11px ' + FONT; c.fillStyle = '#000'; c.textAlign = 'left'; c.fillText(trunc(m.L.name, 26), x + 8, yy); yy += 17;
       for (const lg of m.leg) {
         c.textAlign = 'left'; c.fillStyle = '#222';
+        if (lg.swatch) { const cl = lg.col(); c.strokeStyle = cl === 'transparent' ? '#999' : cl; c.lineWidth = 3; c.lineCap = 'round'; c.beginPath(); c.moveTo(x + 11, yy); c.lineTo(x + 27, yy); c.stroke(); c.fillStyle = '#222'; c.font = '11px ' + FONT; c.fillText(lg.title, x + 34, yy); yy += 18; continue; }
+        if (lg.size != null && lg.line && lg.col) { const cl = lg.col(); c.lineCap = 'round'; c.strokeStyle = cl === 'transparent' ? '#999' : cl; c.lineWidth = 1; c.beginPath(); c.moveTo(x + 10, yy); c.lineTo(x + 20, yy); c.stroke(); c.lineWidth = 4; c.beginPath(); c.moveTo(x + 20, yy); c.lineTo(x + 30, yy); c.stroke(); c.font = '11px ' + FONT; c.fillStyle = '#222'; c.fillText('Width: ' + trunc(lg.title, 12) + ' (max ' + fmt(Math.round(lg.size)) + ')', x + 36, yy); yy += 18; continue; }
         if (lg.size != null) { c.font = '11px ' + FONT; c.fillText((lg.line ? 'Width: ' : lg.bar ? 'Height: ' : 'Size: ') + trunc(lg.title, 14) + ' (max ' + fmt(Math.round(lg.size)) + ')', x + 10, yy); yy += 18; continue; }
         c.font = 'bold 11px ' + FONT; c.fillText(trunc(lg.title, 26), x + 10, yy); c.font = '11px ' + FONT; yy += 16;
         if (lg.cat) {
