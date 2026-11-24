@@ -846,6 +846,8 @@
     });
     h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
     if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'Layers were set up automatically from the Marks card. Change anything here to take control.') + '</div>';
+    const me = [...document.scripts].find(s => /map-studio\.js/.test(s.src)), ver = me && (me.src.match(/[?&]v=(\d+)/) || [])[1];
+    h += '<div class="sv"><button type="button" data-act="reload" title="Load the latest version of this extension. Your settings are kept in the workbook">Reload extension</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div>';
     pbody.innerHTML = h; pbody.scrollTop = sc;
   }
   const byId = id => layers.find(l => l.id === id);
@@ -878,6 +880,12 @@
       const v = active(), lon = v === flat ? toLon(flat.cx) : globe.lon, lat = v === flat ? toLat(flat.cy) : globe.lat;
       const span = v === flat ? Math.min(flat.W, flat.H) * 360 / (flat.S0 * flat.z) : 57.3 / (0.45 * globe.k);
       G.fixed = { lon, lat, span }; G.sv = 'fixed'; claim(); persist(); applyFit(); flat.reset(); globe.reset(); redraw(); renderPanel(); return;
+    }
+    if (b.dataset.act === 'reload') {          // settings live in the workbook, so they come back after the page reloads
+      b.disabled = true; b.textContent = 'Reloading…'; persist();
+      const urls = [...document.querySelectorAll('script[src],link[rel=stylesheet][href]')].map(e => e.src || e.href).filter(u => u.startsWith(location.origin));
+      setTimeout(() => Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null))).then(() => location.reload()), 700);      // wait for the save, then refresh the browser's cached copies of the files
+      return;
     }
     if (b.dataset.act === 'toggle') { const d = b.closest('details'); d.open = !d.open; return; }
     claim(); const act = b.dataset.act, i = layers.findIndex(l => l.id === b.dataset.l);
