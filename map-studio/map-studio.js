@@ -113,8 +113,11 @@
     for (const m of models) m.items = on && m.f.time ? m.base.filter(timeVisible) : m.base;
     updateNote();
   }
+  let refreshInfo = '';
+  const hms = () => new Date().toTimeString().slice(0, 8);
+  TX.onRefresh = (ph, i) => { refreshInfo = ph === 'start' ? ' · updating from Tableau… (' + hms() + ')' : ph === 'read' ? ' · read ' + fmt(i.rows) + ' rows in ' + i.s.toFixed(1) + ' s, drawing…' : refreshInfo.replace(/, drawing…$/, '') + ', done at ' + hms() + ' (' + i.s.toFixed(1) + ' s in all)'; updateNote(); };
   function updateNote() {
-    note.textContent = models.map(m => m.L.on ? m.L.name + ' ' + fmt(m.items.length) + (m.items.length !== m.base.length ? ' of ' + fmt(m.base.length) : '') + (m.skipped ? ' (' + m.skipped + ' skipped)' : '') : '').filter(Boolean).join(' · ');
+    note.textContent = models.map(m => m.L.on ? m.L.name + ' ' + fmt(m.items.length) + (m.items.length !== m.base.length ? ' of ' + fmt(m.base.length) : '') + (m.skipped ? ' (' + m.skipped + ' skipped)' : '') : '').filter(Boolean).join(' · ') + refreshInfo;
   }
 
   // ================= layers =================

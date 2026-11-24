@@ -126,11 +126,13 @@
       let busy = false, again = false;
       const refresh = async () => {
         if (busy) { again = true; return; }
-        busy = true;
+        busy = true; const t0 = Date.now(); if (TX.onRefresh) TX.onRefresh('start');
         try {
           const [enc, data] = await Promise.all([getEncodings(ws), getRows(ws)]);
+          if (TX.onRefresh) TX.onRefresh('read', { rows: data.rows.length, s: (Date.now() - t0) / 1000 });
           onData({ rows: data.rows, cols: data.cols, enc });
         } catch (err) { onData({ error: String(err) }); }
+        if (TX.onRefresh) TX.onRefresh('done', { s: (Date.now() - t0) / 1000 });
         busy = false;
         if (again) { again = false; refresh(); }
       };
