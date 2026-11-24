@@ -21,7 +21,7 @@
     dark: { bg: '#1b232c', land: '#3b4651', stroke: '#566370', label: '#fff', glow: 'rgba(255,255,255,.9)', dflt: '#f2a541', fill: '#4aa3df', halo: 'rgba(0,0,0,.55)' },
     light: { bg: '#dbe6ea', land: '#f3f2ee', stroke: '#b4b4ae', label: '#222', glow: 'rgba(255,255,255,.95)', dflt: '#d9822b', fill: '#3c7fb8', halo: 'rgba(255,255,255,.8)' }
   };
-  const TYPES = { shapes: 'Shapes (geometry)', symbols: 'Symbols', density: 'Density (heat map)', bars: '3D bars', hexbin: 'Hex bins', pies: 'Pie charts', arcs: 'Flow arcs' };
+  const TYPES = { shapes: 'Shapes (geometry)', symbols: 'Symbols', density: 'Density (heat map)', bars: '3D bars', hexbin: 'Hex bins', tracks: 'Tracks (paths over time)', pies: 'Pie charts', arcs: 'Flow arcs' };
   // density palettes: low density is see-through, high density is solid (like Tableau's Density mark)
   const DRAMPS = {
     fire: ['Yellow - red', [[0, '#fff3b0'], [0.4, '#f7a24b'], [0.75, '#e4572e'], [1, '#8c1c13']]],
@@ -124,7 +124,7 @@
   let uid = 0;
   function newLayer(type, name, id) {
     return { id: id || 'L' + Date.now().toString(36) + (uid++), name: name || TYPES[type], type, on: true, lv: '', f: {},
-      st: { color: '', ramp: type === 'arcs' ? 'heat' : type === 'hexbin' ? 'div' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1, bw: 1, bh: 1, hex: 3, agg: 'count', log: true, bagg: 'sum' } };
+      st: { color: '', ramp: type === 'arcs' ? 'heat' : type === 'hexbin' ? 'div' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1, bw: 1, bh: 1, hex: 3, agg: 'count', log: true, bagg: 'sum', head: true } };
   }
   // Dashboard mode has no Marks card tiles, so defaults are guessed from the names and types of a sheet's columns.
   function guess(cx) {
@@ -175,6 +175,7 @@
         case 'symbols': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), size: pick('size', g.meas[0]), color: pick('color', g.plain[1]), time: pick('time', g.date[0]) };
         case 'density': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), weight: pick('weight', null), time: pick('time', g.date[0]) };
         case 'hexbin': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), weight: pick('weight', null), time: pick('time', g.date[0]) };
+        case 'tracks': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), group: pick('group', g.plain[0]), width: pick('width', g.meas[0]), color: pick('color', null), time: pick('time', g.date[0]) };
         case 'bars': return { lon: pick('lon', g.lon), lat: pick('lat', g.lat), name: pick('name', g.plain[0]), height: pick('height', g.meas[0]), color: pick('color', g.meas[1] || null), time: pick('time', g.date[0]) };
         case 'pies': return { name: pick('name', g.plain[0]), lon: pick('lon', null), lat: pick('lat', null), slice: pick('slice', g.plain[1]), value: pick('value', g.meas[0]) };
         default: return { oname: pick('oname', g.og.name), olon: pick('olon', g.og.lon), olat: pick('olat', g.og.lat), dname: pick('dname', g.dg.name), dlon: pick('dlon', g.dg.lon), dlat: pick('dlat', g.dg.lat), width: pick('width', g.meas[0]), color: pick('color', g.dg.rest && g.dg.rest[1] || g.plain[0]), time: pick('time', g.date[0]) };
@@ -193,6 +194,7 @@
       case 'symbols': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), size: pick('size', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
       case 'density': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), weight: pick('weight', siz), time: pick('time', dateCols(cx)[0]) };
       case 'hexbin': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), weight: pick('weight', siz), time: pick('time', dateCols(cx)[0]) };
+      case 'tracks': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), group: pick('group', col), width: pick('width', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
       case 'bars': return { lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), name: pick('name', loc.name), height: pick('height', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
       case 'pies': return { name: pick('name', loc.name), lon: pick('lon', loc.lon), lat: pick('lat', loc.lat), slice: pick('slice', col), value: pick('value', siz) };
       default: return { oname: pick('oname', loc.name), olon: pick('olon', loc.lon), olat: pick('olat', loc.lat), dname: pick('dname', dst.name), dlon: pick('dlon', dst.lon), dlat: pick('dlat', dst.lat), width: pick('width', siz), color: pick('color', col), time: pick('time', dateCols(cx)[0]) };
@@ -225,7 +227,7 @@
     const m = { L, f: fieldsOf(L), cols: ctxOf(L).cols, items: [], skipped: 0, leg: [], ext: null, msg: '' };
     if (DASH && !D.sheets[L.sheet]) { m.msg = 'choose which sheet feeds this layer'; m.base = m.items; return m; }
     try {
-      ({ shapes: buildShapes, symbols: buildSymbols, density: buildDensity, bars: buildBars, hexbin: buildHex, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
+      ({ shapes: buildShapes, symbols: buildSymbols, density: buildDensity, bars: buildBars, hexbin: buildHex, tracks: buildTracks, pies: buildPies, arcs: buildArcs })[L.type](m, rowsFor(L));
     } catch (err) { m.msg = String(err && err.message || err); m.items = []; }
     m.base = m.items;          // all items; m.items becomes the part shown at the current time step
     return m;
@@ -250,6 +252,18 @@
     const lg = colorize(m.items, i => i.row[f.color], f.color, m.L.st); if (lg) m.leg.push(lg);
     if (f.size) m.leg.push({ title: f.size, size: m.smax });
     m.items.sort((a, b) => (b.s || 0) - (a.s || 0));         // big first, small on top
+  }
+  function buildTracks(m, rows) {
+    const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
+    let i = 0;
+    for (const r of rows) {
+      const lon = num(r[f.lon]), lat = num(r[f.lat]); if (lon == null || lat == null) continue;
+      m.items.push({ row: r, lon, lat, name: f.group ? str(r[f.group]) : m.L.name, w: f.width ? num(r[f.width]) : null, t0: f.time ? tsOf(r[f.time]) : null, i: i++ }); stackExt(m, lon, lat);
+    }
+    m.items.sort((a, b) => (a.t0 == null || b.t0 == null ? a.i - b.i : a.t0 - b.t0 || a.i - b.i));          // oldest first, so a track is drawn in the order it was travelled
+    m.wmax = maxOf(1e-9, m.items, i => i.w || 0);
+    const cf = f.color || f.group, lg = colorize(m.items, i => i.row[cf], cf, m.L.st); if (lg) { lg.max = 8; m.leg.push(lg); }
+    if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true });
   }
   function buildHex(m, rows) {
     const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
@@ -370,6 +384,42 @@
   function hitSymbols(x, y, m) {
     let best = null, bd = 1e9;
     for (const it of m.items) { if (!it._s) continue; const d = (it._x - x) ** 2 + (it._y - y) ** 2, lim = Math.max(64, it._s * it._s); if (d < bd && d < lim) { bd = d; best = it; } }
+    return best;
+  }
+
+  // ================= layer: tracks =================
+  // One line per track (e.g. a storm), through its points in time order. The line is as long as the points the time line currently shows, so
+  // "Everything up to this step" leaves a trail behind a dot at the latest position.
+  function trackGroups(m) {
+    if (m._tsrc === m.items) return m._trk;
+    const by = new Map(); for (const it of m.items) { let a = by.get(it.name); if (!a) by.set(it.name, a = []); a.push(it); }
+    m._tsrc = m.items; m._trk = [...by.values()]; return m._trk;
+  }
+  function drawTracks(c, env, m) {
+    const st = m.L.st, T = STYLE[G.style], hotName = hover && hover.m === m ? hover.it.name : null, trk = trackGroups(m), lim = env.flat ? env.SW * 0.5 : 1e9;
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    for (const pts of trk) {
+      const hot = hotName === pts[0].name, fade = hotName && !hot ? 0.2 : 1; let prev = null;
+      for (const it of pts) {
+        const P = env.pt(it.lon, it.lat); it._s = 0; if (!P) { prev = null; continue; } it._x = P[0]; it._y = P[1]; it._s = 1;
+        const col = it.col || st.color || T.dflt;
+        if (prev && Math.abs(P[0] - prev[0]) < lim) {
+          const wpx = (m.f.width && it.w != null ? 1 + Math.sqrt(Math.max(0, it.w) / m.wmax) * 5 : 2) * st.lw * (hot ? 1.5 : 1);
+          c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(P[0], P[1]); c.lineWidth = wpx; c.strokeStyle = col; c.globalAlpha = st.alpha * fade; c.stroke();
+        }
+        prev = P;
+      }
+      c.globalAlpha = 1;
+      const last = pts[pts.length - 1];
+      if (last && last._s) {
+        if (st.head !== false) { c.beginPath(); c.arc(last._x, last._y, 4.5 * Math.max(0.8, st.lw), 0, 6.3); c.globalAlpha = fade; c.fillStyle = last.col || st.color || T.dflt; c.fill(); c.strokeStyle = G.style === 'dark' ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.7)'; c.lineWidth = 1.3; c.stroke(); c.globalAlpha = 1; }
+        if (st.labels && last.name) label(c, last.name, last._x + 8, last._y + 4);
+      }
+    }
+  }
+  function hitTracks(x, y, m) {
+    let best = null, bd = 100;
+    for (const it of m.items) { if (!it._s) continue; const d = (it._x - x) ** 2 + (it._y - y) ** 2; if (d < bd) { bd = d; best = it; } }
     return best;
   }
 
@@ -814,6 +864,7 @@
         else if (m.L.type === 'density') drawDensity(c, env, m);
         else if (m.L.type === 'bars') drawBars(c, env, m);
         else if (m.L.type === 'hexbin') drawHex(c, env, m);
+        else if (m.L.type === 'tracks') drawTracks(c, env, m);
         else if (m.L.type === 'pies') drawPies(c, env, m);
         else { drawArcsFlat(c, v, m); drawArcNodes(c, env, m); }
       }
@@ -828,13 +879,14 @@
         else if (m.L.type === 'density') drawDensity(c, env, m);
         else if (m.L.type === 'bars') drawBars(c, env, m);
         else if (m.L.type === 'hexbin') drawHex(c, env, m);
+        else if (m.L.type === 'tracks') drawTracks(c, env, m);
         else if (m.L.type === 'pies') drawPies(c, env, m);
         else { drawArcsGlobe(c, g, m); drawArcNodes(c, env, m); }
       }
       drawLegend(c, g.W, g.H);
     }
   };
-  const HIT = { shapes: hitShapes, symbols: hitSymbols, density: () => null, bars: hitBars, hexbin: hitHex, pies: hitPies, arcs: hitArcs };      // a density layer is a surface, so it has nothing to hover
+  const HIT = { shapes: hitShapes, symbols: hitSymbols, density: () => null, bars: hitBars, hexbin: hitHex, tracks: hitTracks, pies: hitPies, arcs: hitArcs };      // a density layer is a surface, so it has nothing to hover
   function onHover(x, y, e, view) {
     const tipV = view || active();
     if (x == null) { setHover(null); tipV.hideTip(); return; }
@@ -998,6 +1050,10 @@
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Name / label', nonSpatial) + fsel(L, 'size', 'Size by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
         '<label>Symbol<select data-l="' + L.id + '" data-k="st.shape">' + SHAPES.map(([k, n]) => '<option value="' + k + '"' + (L.st.shape === k ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
         palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'size', 'Symbol size', 0.4, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Labels');
+    } else if (L.type === 'tracks') {
+      h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'group', 'Track (one line per)', nonSpatial) + fsel(L, 'width', 'Line width by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field (order)', timeable) +
+        palette(L) + fixedColor(L) + rng(L, 'lw', 'Line width', 0.3, 4, 0.1) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'head', 'Dot at the latest point') + chk(L, 'labels', 'Show track names') +
+        '<div class="sub">To keep the trail while playing, set Time line &rarr; Show to <b>Everything up to this step</b>.</div>';
     } else if (L.type === 'hexbin') {
       const st = L.st; if (st.hex == null) st.hex = 3; if (!st.agg) st.agg = 'count'; if (st.log == null) st.log = true;
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'weight', 'Measure (optional)', numeric) + fsel(L, 'time', 'Time field', timeable) +
