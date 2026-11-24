@@ -867,7 +867,7 @@
     h += '<div class="add"><select id="addType">' + Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>';
     if (auto && layers.length) h += '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'Layers were set up automatically from the Marks card. Change anything here to take control.') + '</div>';
     const me = [...document.scripts].find(s => /map-studio\.js/.test(s.src)), ver = me && (me.src.match(/[?&]v=(\d+)/) || [])[1];
-    h += '<div class="sv"><button type="button" data-act="reload" title="Load the latest version of this extension. Your settings are kept in the workbook">Reload extension</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div><div class="sub" id="diag">' + esc(diagText()) + '</div>';
+    h += '<div class="sv"><button type="button" data-act="reload" title="Save your settings and download the latest version of this extension. Then use the Reload option in Tableau">Save &amp; fetch latest</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div><div class="sub" id="diag">' + esc(diagText()) + '</div>';
     pbody.innerHTML = h; pbody.scrollTop = sc;
   }
   const byId = id => layers.find(l => l.id === id);
@@ -904,8 +904,8 @@
     if (b.dataset.act === 'reload') {          // settings live in the workbook, so they come back after the page reloads
       b.disabled = true; b.textContent = 'Saving settings…'; clearTimeout(saveT); if (!auto) writeSettings();
       const urls = [location.href.split('#')[0], ...[...document.querySelectorAll('script[src],link[rel=stylesheet][href]')].map(e => e.src || e.href).filter(u => u.startsWith(location.origin))];
-      TX.settings.save().then(() => { b.textContent = 'Reloading…'; return Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null))); }).then(() => location.reload())      // reload only once the settings are safely saved in the workbook
-        .catch(err => { b.disabled = false; b.textContent = 'Reload extension'; show('<b>Not reloaded: your settings could not be saved</b><br>' + esc(String(err && err.message || err)) + '<br>Nothing was changed. Save the workbook and try again.'); });
+      TX.settings.save().then(() => { b.textContent = 'Fetching latest…'; return Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null))); }).then(() => { b.disabled = false; b.textContent = 'Save & fetch latest'; show('<b>Settings saved and latest files downloaded</b><br>Now reload the extension with Tableau\'s own Reload (the dashboard object\'s menu).'); })      // reload only once the settings are safely saved in the workbook
+        .catch(err => { b.disabled = false; b.textContent = 'Save & fetch latest'; show('<b>Not saved: your settings could not be saved</b><br>' + esc(String(err && err.message || err)) + '<br>Save the workbook and try again.'); });
       return;
     }
     if (b.dataset.act === 'toggle') { const d = b.closest('details'); d.open = !d.open; return; }
