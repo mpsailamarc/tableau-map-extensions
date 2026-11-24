@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Parameter player</title>
+<script src="../lib/tableau.extensions.1.latest.js?v=1"></script>
+<style>
+  html, body { margin: 0; height: 100%; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #222; background: #fff; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; box-sizing: border-box; height: 100%; flex-wrap: wrap; }
+  button { border: 1px solid #c4c9cc; background: #f6f7f8; border-radius: 4px; height: 28px; min-width: 30px; font-size: 14px; cursor: pointer; padding: 0 8px; }
+  button:hover { background: #e9ecee; }
+  button.play { background: #1b6ec2; color: #fff; border-color: #1b6ec2; min-width: 38px; }
+  button.play:hover { background: #155a9f; }
+  button:disabled { opacity: .45; cursor: default; }
+  .val { font-weight: 600; min-width: 90px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pos { color: #667; font-size: 11px; }
+  input[type=range] { flex: 1 1 120px; min-width: 80px; }
+  label { display: flex; align-items: center; gap: 4px; color: #444; }
+  select { font-size: 12px; height: 26px; }
+  .cfg { display: none; width: 100%; gap: 8px; align-items: center; padding: 2px 0; }
+  .cfg.on { display: flex; }
+  .msg { padding: 12px; color: #556; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="msg" class="msg" hidden></div>
+<div class="bar" id="bar" hidden>
+  <button id="first" title="First value">⏮</button>
+  <button id="prev" title="Previous value">◀</button>
+  <button id="play" class="play" title="Play / pause">▶</button>
+  <button id="next" title="Next value">▶|</button>
+  <span class="val" id="val"></span><span class="pos" id="pos"></span>
+  <input type="range" id="scrub" min="0" max="0" step="1" value="0">
+  <label>Speed
+    <select id="speed">
+      <option value="3000">Slow</option>
+      <option value="1500" selected>Medium</option>
+      <option value="700">Fast</option>
+      <option value="300">Very fast</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="loop" checked> Loop</label>
+  <button id="gear" title="Choose parameter">⚙</button>
+  <div class="cfg" id="cfg"><label>Parameter <select id="psel"></select></label></div>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var dash, params = [], param = null, vals = [], idx = 0, timer = null, playing = false, busy = false;
+
+  function msg(t) { $('msg').textContent = t; $('msg').hidden = !t; $('bar').hidden = !!t; }
+
+  function listValues(p) {
+    var a = p.allowableValues;
+    return a && a.type === 'list' ? a.allowableValues : null;
+  }
+  function usable(p) { return !!listValues(p); }
+
+  function indexOfCurrent() {
+    var cur = param.currentValue.formattedValue;
+    for (var i = 0; i < vals.length; i++) if (vals[i].formattedValue === cur) return i;
+    return 0;
+  }
+
+  function show() {
+    var n = vals.length;
+    $('val').textContent = vals[idx] ? vals[idx].formattedValue : '';
+    $('pos').textContent = n ? (idx + 1) + ' / ' + n : '';
+    $('scrub').max = Math.max(0, n - 1);
+    $('scrub').value = idx;
+  }
+
+  function setIndex(i) {
+    idx = i; show();
+    if (busy) return Promise.resolve();
+    busy = true;
+    return param.changeValueAsync(vals[i].value).catch(function (e) { console.error(e); stop(); })
+      .then(function () { busy = false; });
+  }
+
+  function stop() {
+    playing = false; clearTimeout(timer); timer = null;
+    $('play').textContent = '▶';
+  }
+
+  function tick() {
+    if (!playing) return;
+    var next = idx + 1;
+    if (next >= vals.length) {
+      if ($('loop').checked) next = 0; else { stop(); return; }
+    }
+    setIndex(next).then(function () {
+      if (playing) timer = setTimeout(tick, +$('speed').value);
+    });
+  }
+
+  function play() {
+    if (!vals.length) return;
+    playing = true; $('play').textContent = '⏸';
+    // start from the current value; if sitting on the last value with loop off, restart
+    if (idx >= vals.length - 1 && !$('loop').checked) idx = -1;
+    timer = setTimeout(tick, 0);
+  }
+
+  function selectParam(name, save) {
+    stop();
+    param = params.filter(function (p) { return p.name === name; })[0] || null;
+    if (!param) return;
+    vals = listValues(param);
+    idx = indexOfCurrent();
+    show();
+    $('psel').value = name;
+    param.addEventListener(tableau.TableauEventType.ParameterChanged, function () {
+      if (param && param.name === name && !busy) { idx = indexOfCurrent(); show(); }
+    });
+    if (save) { tableau.extensions.settings.set('parameter', name); tableau.extensions.settings.saveAsync(); }
+  }
+
+  function fillPicker() {
+    var sel = $('psel'); sel.innerHTML = '';
+    params.forEach(function (p) {
+      var o = document.createElement('option'); o.value = o.textContent = p.name; sel.appendChild(o);
+    });
+  }
+
+  function wire() {
+    $('play').onclick = function () { playing ? stop() : play(); };
+    $('next').onclick = function () { stop(); setIndex((idx + 1) % vals.length); };
+    $('prev').onclick = function () { stop(); setIndex((idx - 1 + vals.length) % vals.length); };
+    $('first').onclick = function () { stop(); setIndex(0); };
+    $('scrub').oninput = function () { stop(); idx = +this.value; show(); };
+    $('scrub').onchange = function () { setIndex(+this.value); };
+    $('gear').onclick = function () { $('cfg').classList.toggle('on'); };
+    $('psel').onchange = function () { selectParam(this.value, true); };
+    ['speed', 'loop'].forEach(function (id) {
+      $(id).onchange = function () {
+        var s = tableau.extensions.settings;
+        s.set(id, id === 'loop' ? String($('loop').checked) : $('speed').value); s.saveAsync();
+      };
+    });
+  }
+
+  tableau.extensions.initializeAsync().then(function () {
+    dash = tableau.extensions.dashboardContent.dashboard;
+    return dash.getParametersAsync();
+  }).then(function (all) {
+    params = all.filter(usable);
+    if (!params.length) { msg('No list parameters found in this workbook. Add a parameter whose allowable values are a list, then reload the extension.'); return; }
+    var s = tableau.extensions.settings.getAll();
+    if (s.speed) $('speed').value = s.speed;
+    if (s.loop) $('loop').checked = s.loop === 'true';
+    fillPicker(); wire(); msg('');
+    var start = s.parameter && params.some(function (p) { return p.name === s.parameter; }) ? s.parameter : params[0].name;
+    selectParam(start, false);
+    if (params.length > 1 && !s.parameter) $('cfg').classList.add('on');
+  }).catch(function (e) { msg('Could not start: ' + (e && e.message || e)); });
+})();
+</script>
+</body>
+</html>

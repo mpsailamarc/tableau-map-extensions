@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <dashboard-extension id="com.demo.parameterplayer" extension-version="0.1.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name"/>
+    <description>Plays a list parameter like a filter player: steps through its values automatically with play, pause, previous, next, speed and loop</description>
+    <author name="Advanced Maps demo" email="noreply@example.com" organization="Demo" website="https://www.example.com"/>
+    <min-api-version>1.11</min-api-version>
+    <source-location>
+      <url>https://mpsailamarc.github.io/tableau-map-extensions/parameter-player/index.html</url>
+    </source-location>
+    <icon/>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+  </dashboard-extension>
+  <resources>
+    <resource id="name">
+      <text locale="en_US">Parameter player</text>
+    </resource>
+  </resources>
+</manifest>
