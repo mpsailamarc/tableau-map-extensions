@@ -267,7 +267,7 @@
     }
     m.items.sort((a, b) => (a.t0 == null || b.t0 == null ? a.i - b.i : a.t0 - b.t0 || a.i - b.i));          // oldest first, so a track is drawn in the order it was travelled
     m.wmax = maxOf(1e-9, m.items, i => i.w || 0);
-    const cf = f.color || f.group, lg = colorize(m.items, i => i.row[cf], cf, m.L.st); if (lg) { lg.max = 8; m.leg.push(lg); }
+    const cf = m.L.f.color === '-' ? null : (f.color || f.group), lg = colorize(m.items, i => i.row[cf], cf, m.L.st); if (lg) { lg.max = 8; m.leg.push(lg); }
     if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true });
   }
   function buildHex(m, rows) {
