@@ -760,12 +760,14 @@
     G.tm = g('tm', 'period'); G.tn = parseInt(g('tn', '3'), 10) || 3; G.tg = g('tg', 'exact'); G.tsp = parseFloat(g('tsp', '1.5')) || 1.5; G.tloop = g('tloop', '1') === '1';
     try { const s = g('layers', ''); if (s) { layers = JSON.parse(s); auto = false; } } catch (e) { /* ignore a damaged value */ }
   }
-  function persist() {
-    clearTimeout(saveT); saveT = setTimeout(() => {
+  TX.settings.onError = err => show('<b>Your settings could not be saved</b><br>' + esc(String(err && err.message || err)) + '<br>They will be lost if the extension reloads. Try again, or save the workbook.');
+  function persist() { clearTimeout(saveT); saveT = setTimeout(writeSettings, 400); }
+  function writeSettings() {
+    {
       TX.settings.set('map', G.map); TX.settings.set('style', G.style); TX.settings.set('base', G.base ? '1' : '0'); TX.settings.set('lf', G.lf); TX.settings.set('sv', G.sv); TX.settings.set('rot', G.rot ? '1' : '0'); TX.settings.set('rs', String(G.rs)); TX.settings.set('fixed', JSON.stringify(G.fixed));
       TX.settings.set('tm', G.tm); TX.settings.set('tn', String(G.tn)); TX.settings.set('tg', G.tg); TX.settings.set('tsp', String(G.tsp)); TX.settings.set('tloop', G.tloop ? '1' : '0');
       TX.settings.set('layers', JSON.stringify(layers));
-    }, 400);
+    }
   }
   function onData(d) {
     if (d.error) { show('<b>Something went wrong</b><br>' + esc(d.error)); return; }
@@ -886,9 +888,10 @@
       G.fixed = { lon, lat, span }; G.sv = 'fixed'; claim(); persist(); applyFit(); flat.reset(); globe.reset(); redraw(); renderPanel(); return;
     }
     if (b.dataset.act === 'reload') {          // settings live in the workbook, so they come back after the page reloads
-      b.disabled = true; b.textContent = 'Reloading…'; persist();
+      b.disabled = true; b.textContent = 'Saving settings…'; clearTimeout(saveT); if (!auto) writeSettings();
       const urls = [...document.querySelectorAll('script[src],link[rel=stylesheet][href]')].map(e => e.src || e.href).filter(u => u.startsWith(location.origin));
-      setTimeout(() => Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null))).then(() => location.reload()), 700);      // wait for the save, then refresh the browser's cached copies of the files
+      TX.settings.save().then(() => { b.textContent = 'Reloading…'; return Promise.all(urls.map(u => fetch(u, { cache: 'reload' }).catch(() => null))); }).then(() => location.reload())      // reload only once the settings are safely saved in the workbook
+        .catch(err => { b.disabled = false; b.textContent = 'Reload extension'; show('<b>Not reloaded: your settings could not be saved</b><br>' + esc(String(err && err.message || err)) + '<br>Nothing was changed. Save the workbook and try again.'); });
       return;
     }
     if (b.dataset.act === 'toggle') { const d = b.closest('details'); d.open = !d.open; return; }

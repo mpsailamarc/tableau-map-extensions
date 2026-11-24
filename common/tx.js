@@ -56,10 +56,24 @@
     /* run fn once the Extensions API is initialised (saved settings are only readable from then on) */
     ready(fn) { readyFns.push(fn); },
     async fetchCSV(path) { return parseCSV(await (await fetch(path)).text()); },
-    settings: {
-      get(k, dflt) { try { const v = tableau.extensions.settings.get(k); return v == null ? dflt : v; } catch (e) { return dflt; } },
-      set(k, v) { try { tableau.extensions.settings.set(k, v); tableau.extensions.settings.saveAsync().catch(() => {}); } catch (e) { /* not available in demo mode */ } }
-    },
+    /* Settings live in the workbook. Tableau locks them while a save is running (set() then throws), so values are queued here,
+       written together, and saved one save at a time. TX.settings.save() returns a promise that rejects if the save failed. */
+    settings: (() => {
+      const pending = {}; let timer = 0, chain = Promise.resolve();
+      const flush = () => { chain = chain.then(async () => {
+        const keys = Object.keys(pending); if (!keys.length) return;
+        const s = tableau.extensions.settings, batch = {}; keys.forEach(k => { batch[k] = pending[k]; delete pending[k]; });
+        try { keys.forEach(k => s.set(k, batch[k])); await s.saveAsync(); }
+        catch (err) { keys.forEach(k => { if (!(k in pending)) pending[k] = batch[k]; }); throw err; }      // keep the values so the next save retries them
+      }); const p = chain; chain = chain.catch(() => {}); return p; };
+      const api = {
+        onError: null,
+        get(k, dflt) { if (k in pending) return pending[k]; try { const v = tableau.extensions.settings.get(k); return v == null ? dflt : v; } catch (e) { return dflt; } },
+        set(k, v) { pending[k] = v; clearTimeout(timer); timer = setTimeout(() => { api.save().catch(err => { console.error('Could not save settings', err); if (api.onError) api.onError(err); }); }, 300); },
+        save() { clearTimeout(timer); if (demo) { Object.keys(pending).forEach(k => delete pending[k]); return Promise.resolve(); } return flush(); }
+      };
+      return api;
+    })(),
     /* dashboard extension: onData({ sheets: { "<sheet name>": { rows, cols } } }) for every sheet on the dashboard, now and whenever one changes */
     async startDashboard(onData, demoLoader) {
       if (demo) { onData(await demoLoader()); return; }
