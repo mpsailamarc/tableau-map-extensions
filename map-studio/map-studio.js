@@ -124,7 +124,7 @@
   let uid = 0;
   function newLayer(type, name, id) {
     return { id: id || 'L' + Date.now().toString(36) + (uid++), name: name || TYPES[type], type, on: true, lv: '', f: {},
-      st: { color: '', ramp: type === 'arcs' ? 'heat' : type === 'hexbin' ? 'div' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1, bw: 1, bh: 1, hex: 3, agg: 'count', log: true } };
+      st: { color: '', ramp: type === 'arcs' ? 'heat' : type === 'hexbin' ? 'div' : 'blues', alpha: 0.8, outline: true, shape: 'circle', size: 1, lw: 1, curve: 0.22, arrows: false, anim: false, top: 0, labels: false, ocolor: '', dramp: 'fire', radius: 1, intensity: 1, bw: 1, bh: 1, hex: 3, agg: 'count', log: true, bagg: 'sum' } };
   }
   // Dashboard mode has no Marks card tiles, so defaults are guessed from the names and types of a sheet's columns.
   function guess(cx) {
@@ -434,12 +434,32 @@
     const f = v => Math.max(0, Math.min(255, Math.round(k > 1 ? v + (255 - v) * (k - 1) : v * k)));
     return 'rgb(' + f(r) + ',' + f(g) + ',' + f(b) + ')';
   }
+  // Rows that share a location (e.g. one row per year for a country) are combined into one bar, so bars never pile up on each other.
+  function barGroups(m) {
+    const st = m.L.st, key = (st.bagg || 'sum') + '|' + st.ramp + '|' + (m.f.color || '');
+    if (m._gsrc === m.items && m._gkey === key) return m._grp;
+    const ag = (a, how) => { if (!a.length) return null; if (how === 'max') return a.reduce((x, y) => Math.max(x, y)); const t = a.reduce((x, y) => x + y, 0); return how === 'avg' ? t / a.length : t; };
+    const how = st.bagg || 'sum', groups = new Map(), ci = m.f.color && colInfo(m.f.color, m.cols), cMeasure = !!ci && (isMeasure(m.f.color) || isNumCol(ci));
+    for (const it of m.items) {
+      const k = it.lon.toFixed(4) + ',' + it.lat.toFixed(4); let g = groups.get(k);
+      if (!g) { g = { lon: it.lon, lat: it.lat, name: it.name, first: it, row: it.row, n: 0, hs: [], cs: [] }; groups.set(k, g); }
+      g.n++; if (it.s != null) g.hs.push(it.s); if (cMeasure) { const v = num(it.row[m.f.color]); if (v != null) g.cs.push(v); }
+    }
+    const list = [...groups.values()]; let gmax = 1e-9, cmin = Infinity, cmax = -Infinity;
+    for (const g of list) { g.s = ag(g.hs, how); if (g.s != null && g.s > gmax) gmax = g.s; g.cv = ag(g.cs, how); if (g.cv != null) { if (g.cv < cmin) cmin = g.cv; if (g.cv > cmax) cmax = g.cv; } }
+    const R = (RAMPS[st.ramp] || RAMPS.blues)[1];
+    for (const g of list) g.col = cMeasure ? (g.cv == null ? null : ramp(R, cmax > cmin ? (g.cv - cmin) / (cmax - cmin) : 0.5)) : g.first.col;
+    const lc = m.leg.find(l => l.ramp), ls = m.leg.find(l => l.bar);
+    if (lc && cMeasure) { lc.ramp = R; lc.min = cmin === Infinity ? 0 : cmin; lc.max = cmax === -Infinity ? 1 : cmax; }
+    if (ls) ls.size = gmax;
+    m._gsrc = m.items; m._gkey = key; m._gmax = gmax; m._grp = list; return list;
+  }
   function drawBars(c, env, m) {
     const st = m.L.st, T = STYLE[G.style], zf = Math.min(1.8, 0.7 + env.z * 0.15), maxH = 120 * (st.bh || 1) * zf, w = (9 + 5 * Math.min(2.5, env.z * 0.5)) * (st.bw || 1);
-    const pts = [];
-    for (const it of m.items) {
+    const pts = [], grp = barGroups(m);
+    for (const it of grp) {
       it._w = 0; const B = env.pt(it.lon, it.lat); if (!B) continue;
-      const hpx = Math.max(2, (m.f.height && it.s != null ? Math.max(0, it.s) / m.smax : 0.3) * maxH);
+      const hpx = Math.max(2, (m.f.height && it.s != null ? Math.max(0, it.s) / m._gmax : 0.3) * maxH);
       let Tp;
       if (env.flat) Tp = [B[0], B[1] - hpx, 1]; else Tp = env.g.ll(it.lon, it.lat, 1 + hpx / env.g.R);
       pts.push({ it, B, Tp });
@@ -447,7 +467,7 @@
     pts.sort(env.flat ? (a, b) => a.B[1] - b.B[1] : (a, b) => a.B[2] - b.B[2]);          // far ones first, near ones cover them
     c.lineJoin = 'round';
     for (const { it, B, Tp } of pts) {
-      const col = colOf(m, it) === 'transparent' ? T.fill : (colOf(m, it) || T.dflt), dx = Tp[0] - B[0], dy = Tp[1] - B[1], len = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+      const cc = it.col || m.L.st.color || T.fill, col = cc === 'transparent' ? T.fill : cc, dx = Tp[0] - B[0], dy = Tp[1] - B[1], len = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
       const nx = len > 0.5 ? -dy / len : 1, ny = len > 0.5 ? dx / len : 0, hw = w / 2, rot = len > 0.5 ? Math.atan2(ny, nx) : 0, ry = len > 0.5 ? hw * 0.5 : hw;
       const hot = hover && hover.it === it; it._x = B[0]; it._y = B[1]; it._tx = Tp[0]; it._ty = Tp[1]; it._w = w;
       c.globalAlpha = st.alpha * dim(m, it);
@@ -466,7 +486,7 @@
   }
   function hitBars(x, y, m) {
     let best = null, bd = 1e9;
-    for (const it of m.items) {
+    for (const it of (m._grp || [])) {
       if (!it._w) continue; const ax = it._x, ay = it._y, bx = it._tx - ax, by = it._ty - ay, l2 = bx * bx + by * by || 1;
       const t = Math.max(0, Math.min(1, ((x - ax) * bx + (y - ay) * by) / l2)), d = Math.hypot(x - (ax + bx * t), y - (ay + by * t));
       if (d <= it._w / 2 + 3 && d < bd) { bd = d; best = it; }
@@ -759,6 +779,11 @@
     return m.L.name;
   }
   function tipHtml(m, it) {
+    if (m.L.type === 'bars') {
+      const how = { sum: 'Sum', avg: 'Average', max: 'Maximum' }[m.L.st.bagg || 'sum'], k = n => '<span class="k">' + esc(n) + ':</span> ';
+      return '<b>' + esc(it.name || titleOf(m, it)) + '</b>' + (m.f.height && it.s != null ? '<br>' + k(m.f.height + (it.n > 1 ? ' (' + how.toLowerCase() + ' of ' + it.n + ' rows)' : '')) + fmt(Math.round(it.s * 100) / 100) : '') +
+        (m.f.color && m.f.color !== m.f.height && it.cv != null ? '<br>' + k(m.f.color) + fmt(Math.round(it.cv * 100) / 100) : '') + (m.f.color && it.cv == null && it.first ? '<br>' + k(m.f.color) + esc(str(it.row[m.f.color])) : '');
+    }
     if (m.L.type === 'hexbin') {
       const agg = m.f.weight ? m.L.st.agg : 'count', pt = n => '<span class="k">' + n + '</span> ';
       return '<b>' + fmt(it.n) + ' point' + (it.n === 1 ? '' : 's') + '</b>' + (agg !== 'count' && m.f.weight ? '<br>' + pt((agg === 'sum' ? 'Sum of ' : 'Average ') + esc(m.f.weight) + ':') + fmt(Math.round(it.v * 100) / 100) : '') + '<br>' + pt('Centre:') + it.lat.toFixed(2) + ', ' + it.lon.toFixed(2);
@@ -981,7 +1006,7 @@
     } else if (L.type === 'bars') {
       if (L.st.bh == null) L.st.bh = 1; if (L.st.bw == null) L.st.bw = 1;
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'name', 'Location name', nonSpatial) + fsel(L, 'height', 'Height by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) +
-        palette(L) + fixedColor(L) + outlineColor(L) + rng(L, 'bh', 'Max height', 0.2, 3, 0.05) + rng(L, 'bw', 'Bar width', 0.3, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Show labels (name, or the height value if there is no name)');
+        palette(L) + fixedColor(L) + outlineColor(L) + '<label title="When several rows sit on the same location (e.g. one per year), they are combined into one bar">Combine rows at a location<select data-l="' + L.id + '" data-k="st.bagg">' + [['sum', 'Sum'], ['avg', 'Average'], ['max', 'Maximum']].map(([v, n]) => '<option value="' + v + '"' + ((L.st.bagg || 'sum') === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' + rng(L, 'bh', 'Max height', 0.2, 3, 0.05) + rng(L, 'bw', 'Bar width', 0.3, 3, 0.05) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + chk(L, 'labels', 'Show labels (name, or the height value if there is no name)');
     } else if (L.type === 'density') {
       const st = L.st; if (st.radius == null) st.radius = 1; if (st.intensity == null) st.intensity = 1; if (!DRAMPS[st.dramp]) st.dramp = 'fire';
       h += fsel(L, 'lon', 'Longitude', numeric) + fsel(L, 'lat', 'Latitude', numeric) + fsel(L, 'weight', 'Weight by (optional)', numeric) + fsel(L, 'time', 'Time field', timeable) +
