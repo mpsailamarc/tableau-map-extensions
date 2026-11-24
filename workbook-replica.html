@@ -52,6 +52,14 @@
 .nav.dark button:hover { background: rgba(255,255,255,.1); } .nav.dark button.on { background: #1b6ec2; border-color: #1b6ec2; color: #fff; }
 .nav.light button { background: #fff; color: #1d3349; border-color: #b9c4cf; }
 .nav.light button:hover { background: #eef3f8; } .nav.light button.on { background: #1d3349; border-color: #1d3349; color: #fff; }
+
+.pc .yt { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+.yt input { display: none; }
+.yt .trk { position: relative; flex: none; width: 52px; height: 28px; border-radius: 28px; background: #b8c2ca; box-shadow: inset 0 1px 3px rgba(0,0,0,.25); transition: background .2s; }
+.yt .trk::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s; }
+.yt input:checked + .trk { background: linear-gradient(90deg, #1d3349, #1b6ec2); } .yt input:checked + .trk::after { transform: translateX(24px); }
+.yt .lab { display: flex; flex-direction: column; font: 600 14px "Tableau Book", -apple-system, "Segoe UI", Arial, sans-serif; color: #1d3349; line-height: 1.25; }
+.yt .lab small { font-weight: 400; font-size: 11px; color: #5d7184; }
 </style>
 </head>
 <body>
@@ -3113,7 +3121,12 @@ window.PLACES=[["Adelaide",138.6,-34.933],["Brisbane",153.02,-27.469],["Cairns",
   };
   function sheetContent(name, dash) {
     const k = SHEETKIND[name];
-    if (k === 'ext') return frame('ws', { sheet: name });
+    if (k === 'ext') {
+      const f = frame('ws', { sheet: name });
+      if (name === 'Cyclones ') f.addEventListener('load', () => {      // start the time line at its first step instead of "All dates"
+        let n = 0; const t = setInterval(() => { try { const d = f.contentDocument, sl = d.getElementById('tlSlider'), tl = d.getElementById('tl'); if (sl && tl && !tl.hidden && +sl.max > 0) { clearInterval(t); sl.value = 0; sl.dispatchEvent(new Event('input')); } } catch (e) { clearInterval(t); } if (++n > 100) clearInterval(t); }, 100); });
+      return f;
+    }
     if (k === 'native') return frame('native', { sheet: name });
     const w = document.createElement('div'); w.className = 'tblwrap'; w.innerHTML = dataTable(name); return w;
   }
@@ -3121,8 +3134,9 @@ window.PLACES=[["Adelaide",138.6,-34.933],["Brisbane",153.02,-27.469],["Cairns",
     const w = document.createElement('div'); w.className = 'pc';
     const titleColor = z.id === '69' ? '#1d3349' : '#333';
     if (z.param === 'One Year at a Time') {
-      w.innerHTML = (z.showTitle ? '<div class="pct" style="color:' + titleColor + '">' + esc(z.param) + '</div>' : '') + ['true', 'false'].map(v => '<label><input type="radio" name="p' + z.id + '" value="' + v + '"' + (String(S[z.param]) === v ? ' checked' : '') + '> ' + v + '</label>').join('');
-      w.querySelectorAll('input').forEach(i => i.onchange = () => window.REPL.setParam(z.param, i.value));
+      w.innerHTML = '<label class="yt"><input type="checkbox"' + (S[z.param] ? ' checked' : '') + '><span class="trk"></span><span class="lab">' + esc(z.param) + '<small></small></span></label>';
+      const inp = w.querySelector('input'), small = w.querySelector('small'), set = () => { small.textContent = inp.checked ? 'On: playing year by year' : 'Off: all years shown'; };
+      set(); inp.onchange = () => { set(); window.REPL.setParam(z.param, inp.checked); };
     } else {
       w.innerHTML = '<label class="sw" title="' + esc(z.param) + ' (show the hidden data sheets)"><input type="checkbox"' + (S[z.param] ? ' checked' : '') + '><span></span></label>';
       w.querySelector('input').onchange = e => window.REPL.setParam(z.param, e.target.checked);
@@ -3146,6 +3160,7 @@ window.PLACES=[["Adelaide",138.6,-34.933],["Brisbane",153.02,-27.469],["Cairns",
     const nav = document.createElement('div'); nav.className = 'nav ' + (light ? 'light' : 'dark');
     META.dashboards.forEach(d2 => { const b = document.createElement('button'); b.textContent = NAVNAME[d2.name] || d2.name; b.title = d2.name; if (d2 === D) b.className = 'on'; b.onclick = () => open(d2); nav.appendChild(b); });
     wrap.appendChild(nav);
+    D.zones.forEach(z => { if (z.kind === 'param' && z.param === 'One Year at a Time') { z.x = 545; z.w = 270; } });
     D.zones.filter(z => !(z.kind === 'sheet' && z.hidden) && !(z.kind === 'param' && z.param === 'Display')).forEach((z, idx) => {
       const el = document.createElement('div'); el.className = 'zone z-' + z.kind; el.style.cssText = 'left:' + z.x + 'px;top:' + (NAV + z.y * K) + 'px;width:' + z.w + 'px;height:' + (z.h * K) + 'px;z-index:' + (idx + 1);
       const inner = document.createElement('div'); inner.className = 'zin'; const m = z.margin;
