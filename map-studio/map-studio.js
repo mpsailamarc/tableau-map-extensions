@@ -522,7 +522,7 @@
     for (const n of nodes) {
       const P = env.pt(n.lon, n.lat); if (!P) continue;
       if (dots) { c.beginPath(); c.arc(P[0], P[1], n.o ? 4.5 : 2.8, 0, 6.3); c.fillStyle = n.o ? '#ffd24a' : '#fff'; c.fill(); c.strokeStyle = n.o ? '#222' : 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke(); }
-      if (n.label && (env.z >= 2.2 || (n.o && nOrig <= 20 && env.z >= 1))) label(c, n.label, P[0] + 7, P[1] + 4, n.o);
+      if (m.L.st.nlab !== false && n.label && (env.z >= 2.2 || (n.o && nOrig <= 20 && env.z >= 1))) label(c, n.label, P[0] + 7, P[1] + 4, n.o);
     }
   }
   function hitArcs(x, y, m, view) {
@@ -921,7 +921,7 @@
         fsel(L, 'dname', 'Destination name', nonSpatial) + fsel(L, 'dlon', 'Destination longitude', numeric) + fsel(L, 'dlat', 'Destination latitude', numeric) +
         fsel(L, 'width', 'Width by', numeric) + fsel(L, 'color', 'Colour by', nonSpatial) + fsel(L, 'time', 'Time field', timeable) + palette(L) + fixedColor(L) +
         '<label>Routes shown<select data-l="' + L.id + '" data-k="st.top">' + [[0, 'All'], [10, 'Top 10'], [25, 'Top 25'], [50, 'Top 50'], [100, 'Top 100'], [250, 'Top 250']].map(([v, n]) => '<option value="' + v + '"' + (+L.st.top === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
-        rng(L, 'lw', 'Line width', 0.3, 3, 0.05) + rng(L, 'curve', 'Curve', 0, 0.5, 0.02) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + '<label>Route ends<select data-l="' + L.id + '" data-k="st.ends">' + [['dots', 'Dots'], ['arrows', 'Arrowheads'], ['none', 'Plain lines']].map(([v, n]) => '<option value="' + v + '"' + (endsOf(L.st) === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' + chk(L, 'anim', 'Animate flow');
+        rng(L, 'lw', 'Line width', 0.3, 3, 0.05) + rng(L, 'curve', 'Curve', 0, 0.5, 0.02) + rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05) + '<label>Route ends<select data-l="' + L.id + '" data-k="st.ends">' + [['dots', 'Dots'], ['arrows', 'Arrowheads'], ['none', 'Plain lines']].map(([v, n]) => '<option value="' + v + '"' + (endsOf(L.st) === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' + chk(L, 'anim', 'Animate flow') + '<label class="chk"><input type="checkbox" data-l="' + L.id + '" data-k="st.nlab"' + (L.st.nlab !== false ? ' checked' : '') + '>&nbsp;Show place labels</label>';
     }
     return h;
   }
