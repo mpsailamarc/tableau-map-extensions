@@ -40,7 +40,7 @@
   const DASH = !!window.MS_DASHBOARD;
   let layers = [], auto = true, loaded = false, D = { rows: [], enc: {}, cols: [], preset: null, sheets: {} };
   const T = { steps: [], index: new Map(), idx: -1, playing: false, acc: 0, grain: 'day' };      // the time line shared by all layers
-  let models = [], hover = null, phase = 0, homed = false, ext = null, raf = 0, saveT = 0;
+  let lastExtKey = null, models = [], hover = null, phase = 0, homed = false, ext = null, raf = 0, saveT = 0;
 
   // ================= cell + column helpers =================
   const maxOf = (floor, arr, f) => { let mx = floor; for (let i = 0; i < arr.length; i++) { const v = f(arr[i]); if (v > mx) mx = v; } return mx; };      // Math.max(...) overflows the stack on big row counts
@@ -830,6 +830,10 @@
     else show('');
     updateNote();
     if (!homed && (ext || G.sv !== 'fit')) { if (applyFit() !== false) { flat.reset(); globe.reset(); homed = true; } } else if (ext || G.sv !== 'fit') applyFit();
+    // When the data now covers a different area (a filter from another sheet or dashboard, say), swing the map and the globe over to it. Only in "Fit to the data" mode.
+    const key = ext ? [ext.a, ext.b, ext.c, ext.d].map(v => Math.round(v * 2) / 2).join(',') : '';
+    if (homed && G.sv === 'fit' && key && key !== lastExtKey && lastExtKey !== null) { flat.reset(); globe.reset(); }
+    if (key || lastExtKey === null) lastExtKey = key;
     tick(); redraw();
   }
   function show(msg) { hint.innerHTML = msg; hint.hidden = !msg; }
