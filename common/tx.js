@@ -56,6 +56,8 @@
     demo, parseCSV, cell, stage,
     /* run fn once the Extensions API is initialised (saved settings are only readable from then on) */
     ready(fn) { readyFns.push(fn); },
+    /* 'authoring' (the workbook author, in Desktop or web edit), 'viewing' (someone just using it), or '' if unknown. In the browser demo ?mode=viewing pretends to be a viewer. */
+    mode() { if (demo) return (location.search.match(/[?&]mode=(\w+)/) || [])[1] || 'demo'; try { return tableau.extensions.environment.mode || ''; } catch (e) { return ''; } },
     async fetchCSV(path) { return parseCSV(await (await fetch(path)).text()); },
     /* Settings live in the workbook. Tableau locks them while a save is running (set() then throws), so values are queued here,
        written together, and saved one save at a time. TX.settings.save() returns a promise that rejects if the save failed.

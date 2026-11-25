@@ -29,3 +29,14 @@ details.studio .sv { margin-top: -2px; }
 .tl input[type=range] { width: 220px; min-width: 80px; flex: 1 1 140px; }
 .tl span { font-size: 12px; color: #222; min-width: 96px; white-space: nowrap; }
 .lb .two{display:flex;gap:14px;margin-bottom:4px}
+/* two cards: Map (everyone) and Layer setup (the author) */
+#cards { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 8px; }
+#cards details.ctl { position: static; }
+#cards #panel2[hidden] { display: none; }
+#cards details.ctl > summary { display: flex; align-items: center; gap: 10px; }
+#cards .xclose { display: none; margin-left: auto; border: 0; background: transparent; font-size: 18px; line-height: 1; cursor: pointer; color: #555; padding: 0 2px; }
+#cards .xclose:hover { color: #000; }
+#cards details[open] > summary .xclose { display: block; }
+details.studio .rad { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+details.studio .rad .rl { color: #444; min-width: 38px; }
+details.studio .rad label { justify-content: flex-start; }
