@@ -1304,7 +1304,8 @@
   function layerParts(L) {
     const st = L.st; let S = '', V = '';
     const sel = (k, label, pairs, cur, title) => '<label' + (title ? ' title="' + title + '"' : '') + '>' + label + '<select data-l="' + L.id + '" data-k="st.' + k + '">' + pairs.map(([v, n]) => '<option value="' + v + '"' + (String(cur) === String(v) ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>';
-    const pal = palette(L), fx = fixedColor(L), oc = outlineColor(L), op = rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05), labels = chk(L, 'labels', 'Show labels');
+    // Fixed colour only applies when nothing sets the colour; the palette only applies to a colour scale (a measure). Otherwise they would do nothing, so they are not shown.
+    const fl = fieldsOf(L), pal = L.type === 'hexbin' || (fl.color && isMeasure(fl.color)) ? palette(L) : '', fx = fl.color ? '' : fixedColor(L), oc = outlineColor(L), op = rng(L, 'alpha', 'Opacity', 0.1, 1, 0.05), labels = chk(L, 'labels', 'Show labels');
     S += '<label>Type<select data-l="' + L.id + '" data-k="type">' + Object.entries(TYPES).filter(([k]) => !(DASH && k === 'cartogram')).map(([k, v]) => '<option value="' + k + '"' + (L.type === k ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label>';
     if (DASH) {
       const sn = Object.keys(D.sheets);
@@ -1429,7 +1430,7 @@
     setPath(L, t.dataset.k, v); persist();
     if (t.type === 'range') { if (t.dataset.k === 'st.hex') { persist(); rebuild(); } else if (t.dataset.k === 'st.cmorph' || t.dataset.k === 'st.cscl') { applyTime(); redraw(); } else { redraw(); tick(); } return; }
     if (t.dataset.k === 'on' || t.dataset.k.startsWith('st.') && !['st.ramp', 'st.dramp', 'st.color'].includes(t.dataset.k) && t.dataset.k !== 'st.top') { /* draw-time options */ }
-    rebuild(); if (['type', 'lv', 'sheet', 'f.time', 'st.outline', 'on', 'param'].includes(t.dataset.k)) renderPanel();
+    rebuild(); if (['type', 'lv', 'sheet', 'f.time', 'f.color', 'st.outline', 'on', 'param'].includes(t.dataset.k)) renderPanel();
   }
   const bodies = [pbody, pbody2].filter(Boolean);
   bodies.forEach(b => b.addEventListener('input', e => { if (e.target.type === 'range' || e.target.type === 'color') applyInput(e.target); }));
