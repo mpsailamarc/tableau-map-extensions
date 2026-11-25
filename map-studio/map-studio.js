@@ -607,7 +607,7 @@
   function drawTracks(c, env, m) {
     const st = m.L.st, T = STYLE[G.style], hotName = hover && hover.m === m ? hover.it.name : null, trk = trackGroups(m), lim = env.flat ? env.SW * 0.5 : 1e9;
     c.lineCap = 'round'; c.lineJoin = 'round';
-    for (const pts of trk) {
+    for (const pts of trk) {          // the dot at a track's latest point fades with the other marks once that track has ended
       const hot = hotName === pts[0].name, fade = hotName && !hot ? 0.2 : 1; let prev = null;
       for (const it of pts) {
         const P = env.pt(it.lon, it.lat); it._s = 0; if (!P) { prev = null; continue; } it._x = P[0]; it._y = P[1]; it._s = 1;
@@ -621,8 +621,8 @@
       c.globalAlpha = 1;
       const last = pts[pts.length - 1];
       if (last && last._s) {
-        if (st.head !== false) { c.beginPath(); c.arc(last._x, last._y, 4.5 * Math.max(0.8, st.lw), 0, 6.3); c.globalAlpha = fade; c.fillStyle = last.col || st.color || T.dflt; c.fill(); c.strokeStyle = G.style === 'dark' ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.7)'; c.lineWidth = 1.3; c.stroke(); c.globalAlpha = 1; }
-        if (st.labels && last.name) label(c, last.name, last._x + 8, last._y + 4);
+        if (st.head !== false) { c.beginPath(); c.arc(last._x, last._y, 4.5 * Math.max(0.8, st.lw), 0, 6.3); c.globalAlpha = fade * fadeOf(last); c.fillStyle = last.col || st.color || T.dflt; c.fill(); c.strokeStyle = G.style === 'dark' ? 'rgba(255,255,255,.9)' : 'rgba(0,0,0,.7)'; c.lineWidth = 1.3; c.stroke(); c.globalAlpha = 1; }
+        if (st.labels && last.name && fadeOf(last) > 0.5) label(c, last.name, last._x + 8, last._y + 4);
       }
     }
   }
@@ -1463,6 +1463,13 @@
 
   // ================= demo (outside Tableau): a union of three tables =================
   async function demoLoader() {
+    if (new URLSearchParams(location.search).get('tracks')) {          // test: storm-like tracks that start and end at different dates
+      const rows = [], NAMES = ['Ana', 'Ben', 'Carl', 'Dora', 'Eli', 'Faye', 'Gus', 'Hana'];
+      NAMES.forEach((nm, i) => { const n = 10 + (i % 3) * 3, lat0 = 12 + (i % 4) * 4, lon0 = -80 + i * 6; for (let k = 0; k < n; k++) rows.push({ Storm: TX.cell(nm), Longitude: TX.cell(lon0 - k * 1.6), Latitude: TX.cell(lat0 + k * 0.9 + Math.sin(k / 2)), Date: { value: new Date(2020, 0, 1 + i * 3 + k), formattedValue: 'd' } }); });
+      G.fade = true; G.tm = 'cum'; G.fn = 6;
+      return { rows, cols: [{ name: 'Storm', dataType: 'string' }, { name: 'Longitude', dataType: 'float' }, { name: 'Latitude', dataType: 'float' }, { name: 'Date', dataType: 'date' }], enc: {},
+        preset: [Object.assign(newLayer('tracks', 'Storms', 'demo-tracks'), { f: { lon: 'Longitude', lat: 'Latitude', group: 'Storm', time: 'Date' } })] };
+    }
     if (new URLSearchParams(location.search).get('data') === 'ne') {      // the Natural Earth countries as a plain spatial table
       const only = new URLSearchParams(location.search).get('only');      // e.g. only=Australia,New Zealand to test a regional view
       const rows = (await TX.fetchCSV('../data/ne_110m_countries.csv')).filter(r => !only || only.split(',').includes(r.Admin)).map(r => ({ Admin: TX.cell(r.Admin), Continent: TX.cell(r.Continent), 'SUM(Population)': TX.cell(Number(r.Population), fmt(Number(r.Population))), 'COLLECT(Geometry)': { value: r.Geometry, formattedValue: 'Polygon' } }));
