@@ -473,7 +473,7 @@
     m.wmax = maxOf(1e-9, m.items, i => i.w || 0);
     const cf = m.L.f.color === '-' ? null : (f.color || f.group), lg = colorize(m.items, i => i.row[cf], cf, m.L.st); if (lg) { if (lg.cat) lg.max = 8; m.leg.push(lg); }          // 8 = how many categories the legend lists. For a colour ramp, max is the top of the scale and must stay as it is else m.leg.push({ swatch: true, title: 'All tracks', col: () => m.L.st.color || STYLE[G.style].dflt });
     // the width sample takes the colour the tracks are really drawn in: the fixed colour, else the colour scale (a mid tone), else grey for categories
-    if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true, col: () => (m.L.st.color && m.L.st.color !== 'transparent' ? m.L.st.color : lg && lg.ramp ? ramp(lg.ramp, 0.7) : lg && lg.cat ? '#9aa3ad' : STYLE[G.style].dflt) });
+    if (f.width) m.leg.push({ title: f.width, size: m.wmax, line: true, col: () => (lg && lg.ramp ? ramp(lg.ramp, 0.7) : lg && lg.cat ? '#9aa3ad' : m.L.st.color && m.L.st.color !== 'transparent' ? m.L.st.color : STYLE[G.style].dflt) });          // same order as the tracks themselves: the colour field first, a fixed colour only when there is none
   }
   function buildHex(m, rows) {
     const f = m.f; if (!f.lon || !f.lat) { m.msg = 'choose a longitude and a latitude field'; return; }
@@ -1476,7 +1476,7 @@
       NAMES.forEach((nm, i) => { const n = 10 + (i % 3) * 3, lat0 = 12 + (i % 4) * 4, lon0 = -80 + i * 6; for (let k = 0; k < n; k++) rows.push({ Storm: TX.cell(nm), Longitude: TX.cell(lon0 - k * 1.6), Latitude: TX.cell(lat0 + k * 0.9 + Math.sin(k / 2)), 'SUM(Wind)': TX.cell(20 + k * 15 + i * 5), 'SUM(Pressure)': TX.cell(1000 - k * 6 - i), Date: { value: new Date(2020, 0, 1 + i * 3 + k), formattedValue: 'd' } }); });
       G.fade = true; G.tm = 'cum'; G.fn = 6;
       return { rows, cols: [{ name: 'Storm', dataType: 'string' }, { name: 'Longitude', dataType: 'float' }, { name: 'Latitude', dataType: 'float' }, { name: 'SUM(Wind)', dataType: 'float' }, { name: 'SUM(Pressure)', dataType: 'float' }, { name: 'Date', dataType: 'date' }], enc: {},
-        preset: [Object.assign(newLayer('tracks', 'Storms', 'demo-tracks'), { f: { lon: 'Longitude', lat: 'Latitude', group: 'Storm', time: 'Date', color: 'SUM(Wind)', width: 'SUM(Pressure)' } })] };
+        preset: [Object.assign(newLayer('tracks', 'Storms', 'demo-tracks'), { f: { lon: 'Longitude', lat: 'Latitude', group: 'Storm', time: 'Date', color: 'SUM(Wind)', width: 'SUM(Pressure)' } }, new URLSearchParams(location.search).get('stale') ? { st: Object.assign(newLayer('tracks').st, { color: '#f2a541' }) } : {})] };          // ?stale=1: a fixed colour left over from before a colour field was chosen
     }
     if (new URLSearchParams(location.search).get('data') === 'ne') {      // the Natural Earth countries as a plain spatial table
       const only = new URLSearchParams(location.search).get('only');      // e.g. only=Australia,New Zealand to test a regional view
