@@ -107,8 +107,8 @@
     if (T.steps.length < 2) { T.idx = -1; T.playing = false; }
     else if (T.idx < 0 && noAll()) T.idx = T.steps.length - 1;          // unless "All dates" is allowed in the layer settings, a cartogram always shows one date: start on the latest
   }
-  // The "All dates" button is a setting for every map type (Time line, in the panel). Left alone, it is on for all types except a cartogram, which shows one date at a time.
-  const allowAll = () => (G.tall != null ? G.tall : !models.some(m => m.L.on && m.L.type === 'cartogram' && m.f.time)), noAll = () => !allowAll();
+  // The "All dates" button is a setting for every map type (Time line, in the panel). It is off by default: the map always shows one date, starting on the latest.
+  const allowAll = () => G.tall === true, noAll = () => !allowAll();
   function fadeOf(it) {          // how solid an older mark still is: 1 for the current step, down to nearly clear after the fade length
     if (!G.fade || it.t == null || T.idx < 0) return 1;
     const age = T.idx - (T.index.get(it.t) || 0); if (age <= 0) return 1;
@@ -133,6 +133,7 @@
   }
   let refreshInfo = '';
   const hms = () => new Date().toTimeString().slice(0, 8);
+  TX.params.onChange = () => { if (loaded) { renderPanel(); redraw(); } };
   TX.onRefresh = (ph, i) => { refreshInfo = ph === 'start' ? ' · updating from Tableau… (' + hms() + ')' : ph === 'read' ? ' · read ' + fmt(i.rows) + ' rows in ' + i.s.toFixed(1) + ' s, drawing…' : refreshInfo.replace(/, drawing…$/, '') + ', done at ' + hms() + ' (' + i.s.toFixed(1) + ' s in all)'; updateNote(); };
   function updateNote() {
     note.textContent = models.map(m => m.L.on ? m.L.name + ' ' + fmt(m.items.length) + (m.items.length !== m.base.length ? ' of ' + fmt(m.base.length) : '') + (m.skipped ? ' (' + m.skipped + ' skipped)' : '') + (m.L.type === 'cartogram' && m.zsz < 0.98 ? ' (zoomed in: shapes drawn at ' + Math.round(m.zsz * 100) + '% of map scale, dashed = true size)' : '') : '').filter(Boolean).join(' · ') + refreshInfo;
@@ -152,7 +153,7 @@
     const oCols = nonSp.map(c => c.name).filter(n => oRe.test(n)), dCols = nonSp.map(c => c.name).filter(n => dRe.test(n) && !oCols.includes(n));
     const og = classify(oCols), dg = classify(dCols);
     const used = new Set([...oCols, ...dCols]);
-    const meas = C.filter(c => isNumCol(c) && !isLon(c.name) && !isLat(c.name)).map(c => c.name);
+    const meas = C.filter(c => isNumCol(c) && !isLon(c.name) && !isLat(c.name)).map(c => c.name).sort((a, b) => (isMeasure(a) && dateCut(a) ? 0 : dateCut(a) ? 1 : 2) - (isMeasure(b) && dateCut(b) ? 0 : dateCut(b) ? 1 : 2));          // aggregated measures first, YEAR(...) last
     const plain = C.filter(c => c.dataType === 'string' && !used.has(c.name)).map(c => c.name);
     return { date: dateCols(cx), spatial: spatialCols(cx), lon: lonC.filter(n => !used.has(n))[0] || lonC[0] || null, lat: latC.filter(n => !used.has(n))[0] || latC[0] || null, og, dg, meas, plain,
       hasArcs: !!((og.name || og.lon) && (dg.name || dg.lon)) };
@@ -1031,7 +1032,7 @@
         c.textAlign = 'left'; c.fillStyle = '#222';
         if (lg.swatch) { const cl = lg.col(); c.strokeStyle = cl === 'transparent' ? '#999' : cl; c.lineWidth = 3; c.lineCap = 'round'; c.beginPath(); c.moveTo(x + 11, yy); c.lineTo(x + 27, yy); c.stroke(); c.fillStyle = '#222'; c.font = '11px ' + FONT; c.fillText(lg.title, x + 34, yy); yy += 18; continue; }
         if (lg.size != null) {
-          section(c, x, yy, sizeLabel(lg), lg.title); yy += SEC;
+          section(c, x, yy, sizeLabel(lg), ml(m, lg.title)); yy += SEC;
           c.font = '11px ' + FONT; c.fillStyle = '#222';
           if (lg.circles) {          // the largest and the smallest mark, as drawn: area follows the value
             const R = 12, top = yy - 3, hasMin = lg.min != null && lg.min < lg.size, r2 = hasMin ? Math.max(2.5, R * Math.sqrt(lg.min / lg.size)) : 0;
@@ -1046,7 +1047,7 @@
           } else { c.fillText('largest  ' + fmtC(lg.size), x + 10, yy); yy += 18; }
           continue;
         }
-        if (lg.title) section(c, x, yy, lg.words ? 'Density' : 'Colour', lg.words ? lg.title.replace(/^Density:?\s*/, '') || 'points' : lg.title); yy += SEC;
+        if (lg.title) section(c, x, yy, lg.words ? 'Density' : 'Colour', lg.words ? lg.title.replace(/^Density:?\s*/, '') || 'points' : ml(m, lg.title)); yy += SEC;
         c.font = '11px ' + FONT;
         if (lg.cat) {
           const cats = [...lg.cat].slice(0, lg.max || 6);
@@ -1063,6 +1064,9 @@
   }
   const fmtC = n => { const a = Math.abs(n); for (const [d, t] of [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]) if (a >= d) return +(n / d).toFixed(Math.abs(n / d) < 10 ? 2 : Math.abs(n / d) < 100 ? 1 : 0) + t; return String(+n.toFixed(a < 10 ? 2 : a < 100 ? 1 : 0)); };          // 16,200,000,000,000 -> 16.2T
   const minOfPos = (arr, f) => { let mn = Infinity; for (let i = 0; i < arr.length; i++) { const v = f(arr[i]); if (v > 0 && v < mn) mn = v; } return mn === Infinity ? null : mn; };
+  // "Measure swapper": a layer can name its measure after a workbook parameter (e.g. "Measure to Display"), so legends and tooltips say what is shown instead of "SUM(Measure)"
+  const paramLabel = name => { const q = TX.params && TX.params.list.find(x => x.name === name); return q ? q.label : ''; };
+  const ml = (m, n) => { if (!n || !m.L.param) return n; const lab = paramLabel(m.L.param); if (!lab) return n; const f = m.f; return [f.size, f.height, f.weight, f.width, f.value].includes(n) ? lab : n; };
   const trunc = (s, n) => { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
   // ================= tooltip =================
@@ -1075,23 +1079,23 @@
   function tipHtml(m, it) {
     if (m.L.type === 'bars') {
       const how = { sum: 'Sum', avg: 'Average', max: 'Maximum' }[m.L.st.bagg || 'sum'], k = n => '<span class="k">' + esc(n) + ':</span> ';
-      return '<b>' + esc(it.name || titleOf(m, it)) + '</b>' + (m.f.height && it.s != null ? '<br>' + k(m.f.height + (it.n > 1 ? ' (' + how.toLowerCase() + ' of ' + it.n + ' rows)' : '')) + fmt(Math.round(it.s * 100) / 100) : '') +
+      return '<b>' + esc(it.name || titleOf(m, it)) + '</b>' + (m.f.height && it.s != null ? '<br>' + k(ml(m, m.f.height) + (it.n > 1 ? ' (' + how.toLowerCase() + ' of ' + it.n + ' rows)' : '')) + fmt(Math.round(it.s * 100) / 100) : '') +
         (m.f.color && m.f.color !== m.f.height && it.cv != null ? '<br>' + k(m.f.color) + fmt(Math.round(it.cv * 100) / 100) : '') + (m.f.color && it.cv == null && it.first ? '<br>' + k(m.f.color) + esc(str(it.row[m.f.color])) : '');
     }
     if (m.L.type === 'hexbin') {
       const agg = m.f.weight ? m.L.st.agg : 'count', pt = n => '<span class="k">' + n + '</span> ';
-      return '<b>' + fmt(it.n) + ' point' + (it.n === 1 ? '' : 's') + '</b>' + (agg !== 'count' && m.f.weight ? '<br>' + pt((agg === 'sum' ? 'Sum of ' : 'Average ') + esc(m.f.weight) + ':') + fmt(Math.round(it.v * 100) / 100) : '') + '<br>' + pt('Centre:') + it.lat.toFixed(2) + ', ' + it.lon.toFixed(2);
+      return '<b>' + fmt(it.n) + ' point' + (it.n === 1 ? '' : 's') + '</b>' + (agg !== 'count' && m.f.weight ? '<br>' + pt((agg === 'sum' ? 'Sum of ' : 'Average ') + esc(ml(m, m.f.weight)) + ':') + fmt(Math.round(it.v * 100) / 100) : '') + '<br>' + pt('Centre:') + it.lat.toFixed(2) + ', ' + it.lon.toFixed(2);
     }
     if (m.L.type === 'pies') {
       return '<b>' + esc(it.name) + '</b>' + m.pnames.filter(n => it.s.get(n)).map(n => '<span style="color:' + m.pcol.get(n) + '">&#9632;</span> ' + esc(n) + ': <b style="display:inline">' + fmt(it.s.get(n)) + '</b>').join('<br>') +
-        (m.f.value ? '<br><span class="k">Total ' + esc(m.f.value) + ':</span> ' + fmt(it.n) : '');
+        (m.f.value ? '<br><span class="k">Total ' + esc(ml(m, m.f.value)) + ':</span> ' + fmt(it.n) : '');
     }
     const hide = new Set(Object.values(m.f).filter(Boolean).filter(n => { const c = colInfo(n, m.cols); return (c && c.dataType === 'spatial') || isLonOrLatUsed(m, n); }));
     const title = titleOf(m, it), out = [];
     for (const k of Object.keys(it.row)) {
       if (hide.has(k) || /\(generated\)$/.test(k) || isNull(it.row[k]) || (colInfo(k, m.cols) || {}).dataType === 'spatial') continue;
       const t = str(it.row[k]); if (t === title) continue;
-      out.push('<span class="k">' + esc(k) + ':</span> ' + esc(t));
+      out.push('<span class="k">' + esc(ml(m, k)) + ':</span> ' + esc(t));
     }
     return '<b>' + esc(title) + '</b>' + out.join('<br>') + (m.L.type === 'cartogram' && it.fe != null ? '<br><span class="k">Drawn at</span> ' + Math.round(it.fe * it.fe * 100) + '% of its real area' : '');
   }
@@ -1276,10 +1280,17 @@
   const optsOf = (L, key, pred) => {
     const dflt = fieldsOf({ ...L, f: {} })[key], cur = L.f[key] || '', lead = DASH ? 'Auto: ' : 'Marks card: ';
     let h = '<option value=""' + (cur === '' ? ' selected' : '') + '>' + (dflt ? lead + esc(trunc(dflt, 22)) : (DASH ? 'Auto (none found)' : 'Marks card (not set)')) + '</option><option value="-"' + (cur === '-' ? ' selected' : '') + '>(none)</option>';
-    const list = ctxOf(L).cols.filter(pred || (() => true)).map(c => c.name); if (cur && cur !== '-' && !list.includes(cur)) list.unshift(cur);
+    const cx = ctxOf(L), list = cx.cols.filter(c => (pred || (() => true))(c, cx)).map(c => c.name); if (cur && cur !== '-' && !list.includes(cur)) list.unshift(cur);
     return h + list.map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(trunc(n, 28)) + '</option>').join('');
   };
-  const timeable = c => c.dataType === 'date' || c.dataType === 'date-time' || c.dataType === 'int', any = () => true, numeric = c => isNumCol(c), spatial = c => c.dataType === 'spatial', nonSpatial = c => c.dataType !== 'spatial';
+  // A measure field: a number by type, an aggregate by name (SUM(...), AGG(...)), or - for calculated fields Tableau types oddly - one whose values are numbers.
+  const numericLike = (c, cx) => {
+    if (isNumCol(c) || isMeasure(c.name)) return true;
+    if (!cx || ['spatial', 'date', 'date-time', 'bool'].includes(c.dataType)) return false;
+    for (let i = 0, n = 0; i < cx.rows.length && n < 40; i++) { const v = raw(cx.rows[i][c.name]); if (v == null || v === '') continue; n++; if (typeof v === 'number') return true; if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v.replace(/,/g, '')))) return true; return false; }
+    return false;
+  };
+  const timeable = c => c.dataType === 'date' || c.dataType === 'date-time' || c.dataType === 'int', any = () => true, numeric = (c, cx) => numericLike(c, cx), spatial = c => c.dataType === 'spatial', nonSpatial = c => c.dataType !== 'spatial';
   function fsel(L, key, label, pred) { return '<label>' + label + '<select data-l="' + L.id + '" data-k="f.' + key + '">' + optsOf(L, key, pred) + '</select></label>'; }
   function rng(L, key, label, min, max, step) { return '<label>' + label + '<input type="range" data-l="' + L.id + '" data-k="st.' + key + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + L.st[key] + '"></label>'; }
   function chk(L, key, label) { return '<label class="chk"><input type="checkbox" data-l="' + L.id + '" data-k="st.' + key + '"' + (L.st[key] ? ' checked' : '') + '>&nbsp;' + label + '</label>'; }
@@ -1343,6 +1354,8 @@
       V += pal + fx + sel('top', 'Routes shown', [[0, 'All'], [10, 'Top 10'], [25, 'Top 25'], [50, 'Top 50'], [100, 'Top 100'], [250, 'Top 250']], +st.top) + rng(L, 'lw', 'Line width', 0.3, 3, 0.05) + rng(L, 'curve', 'Curve', 0, 0.5, 0.02) + op +
         sel('ends', 'Route ends', [['dots', 'Dots'], ['arrows', 'Arrowheads'], ['none', 'Plain lines']], endsOf(st)) + chk(L, 'anim', 'Animate flow') + '<label class="chk"><input type="checkbox" data-l="' + L.id + '" data-k="st.nlab"' + (st.nlab !== false ? ' checked' : '') + '>&nbsp;Show labels</label>';
     }
+    const plist = (TX.params && TX.params.list) || [];          // measure swapper: name the measure after a parameter
+    S += plist.length || L.param ? '<label title="For a sheet whose measure is switched by a parameter: the legend and tooltips name the measure after the parameter\'s current value">Name the measure from parameter<select data-l="' + L.id + '" data-k="param"><option value="">(none)</option>' + plist.map(q => '<option value="' + esc(q.name) + '"' + (q.name === L.param ? ' selected' : '') + '>' + esc(trunc(q.name, 26)) + '</option>').join('') + (L.param && !plist.some(q => q.name === L.param) ? '<option value="' + esc(L.param) + '" selected>' + esc(trunc(L.param, 22)) + ' (not found)</option>' : '') + '</select></label>' + (L.param && paramLabel(L.param) ? '<div class="sub">Now showing: <b>' + esc(paramLabel(L.param)) + '</b></div>' : '') : '';
     return { setup: S, view: V };
   }
   function diagText() {
@@ -1380,7 +1393,9 @@
     const addCtl = (DASH || !layers.length) ? '<div class="add"><select id="addType">' + Object.entries(TYPES).filter(([k]) => !(DASH && k === 'cartogram')).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button type="button" data-act="add">+ Add layer</button></div>' : '';
     const autoNote = auto && layers.length ? '<div class="sub">' + (DASH ? 'One layer was set up for each sheet that has map fields. Change anything here to take control.' : 'The layer was set up automatically from the Marks card. Change anything here to take control.') + '</div>' : '';
     const me = [...document.scripts].find(x => /map-studio\.js/.test(x.src)), ver = me && (me.src.match(/[?&]v=(\d+)/) || [])[1];
-    const maint = '<div class="sv"><button type="button" data-act="reload" title="Save your settings and download the latest version of this extension. Then use the Reload option in Tableau">Save &amp; fetch latest</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div><div class="sub" id="diag">' + esc(diagText()) + '</div>';
+    const colsOf = DASH ? Object.entries(D.sheets).flatMap(([n, sh]) => sh.cols.map(c => n + ': ' + c.name + ' (' + c.dataType + ')')) : D.cols.map(c => c.name + ' (' + c.dataType + ')');
+    const fieldsSent = '<details class="fl"><summary class="sub">Fields Tableau sent (' + colsOf.length + ')</summary><div class="sub">' + (colsOf.map(esc).join('<br>') || 'none') + '</div></details>';
+    const maint = fieldsSent + '<div class="sv"><button type="button" data-act="reload" title="Save your settings and download the latest version of this extension. Then use the Reload option in Tableau">Save &amp; fetch latest</button> <span class="sub">' + (ver ? 'version ' + ver : '') + '</span></div><div class="sub" id="diag">' + esc(diagText()) + '</div>';
     // Card 1 (Map) = what everyone can change; Card 2 (Layer setup) = what the map is built from, for the author
     let c2 = '<div class="grp"><div class="lh">Where the map opens</div>' + startView + '</div>';          // the start view is the author's choice, so it lives in Layer setup
     if (DASH) {          // dashboard extension: one layer per sheet. Card 1 only turns layers on and off; each layer's setup and appearance are in Card 2
@@ -1413,7 +1428,7 @@
     setPath(L, t.dataset.k, v); persist();
     if (t.type === 'range') { if (t.dataset.k === 'st.hex') { persist(); rebuild(); } else if (t.dataset.k === 'st.cmorph' || t.dataset.k === 'st.cscl') { applyTime(); redraw(); } else { redraw(); tick(); } return; }
     if (t.dataset.k === 'on' || t.dataset.k.startsWith('st.') && !['st.ramp', 'st.dramp', 'st.color'].includes(t.dataset.k) && t.dataset.k !== 'st.top') { /* draw-time options */ }
-    rebuild(); if (['type', 'lv', 'sheet', 'f.time', 'st.outline', 'on'].includes(t.dataset.k)) renderPanel();
+    rebuild(); if (['type', 'lv', 'sheet', 'f.time', 'st.outline', 'on', 'param'].includes(t.dataset.k)) renderPanel();
   }
   const bodies = [pbody, pbody2].filter(Boolean);
   bodies.forEach(b => b.addEventListener('input', e => { if (e.target.type === 'range' || e.target.type === 'color') applyInput(e.target); }));
@@ -1453,9 +1468,9 @@
       const rows = (await TX.fetchCSV('../data/ne_110m_countries.csv')).filter(r => !only || only.split(',').includes(r.Admin)).map(r => ({ Admin: TX.cell(r.Admin), Continent: TX.cell(r.Continent), 'SUM(Population)': TX.cell(Number(r.Population), fmt(Number(r.Population))), 'COLLECT(Geometry)': { value: r.Geometry, formattedValue: 'Polygon' } }));
       if (new URLSearchParams(location.search).get('nogeom')) {          // test: a table with country names, a year and a measure, but no spatial field (like World Indicators)
         const out = [], skew = new URLSearchParams(location.search).get('skew'), cf = { Europe: 60, 'North America': 40, Asia: 8, Africa: 1, 'South America': 4, Oceania: 30 }, mulOf = (nm, k, cont) => (1 + ((nm.length * 7 + k * 13) % 10) / 10 * k) * (skew ? (cf[cont] || 1) : 1);
-        for (const r of rows) for (let k = 0; k < 3; k++) out.push({ Admin: r.Admin, Continent: r.Continent, 'YEAR(Year)': TX.cell(2010 + k), 'SUM(GDP)': TX.cell(Math.round(Number(r['SUM(Population)'].value) * mulOf(String(r.Admin.value), k, String(r.Continent.value)))) });
+        for (const r of rows) for (let k = 0; k < 3; k++) out.push({ Admin: r.Admin, Continent: r.Continent, 'YEAR(Year)': TX.cell(2010 + k), 'SUM(GDP)': TX.cell(Math.round(Number(r['SUM(Population)'].value) * mulOf(String(r.Admin.value), k, String(r.Continent.value)))), Calculation_1: TX.cell(Number(r['SUM(Population)'].value) / 1000) });          // a calculated field that Tableau types as text
         if (!new URLSearchParams(location.search).get('only')) for (const [nm, pop] of [['Singapore', 5.3e6], ['Malta', 4.2e5], ['Bahrain', 1.3e6], ['Hong Kong SAR, China', 7.2e6], ['Barbados', 2.8e5], ['Maldives', 3.4e5]]) for (let k = 0; k < 3; k++) out.push({ Admin: TX.cell(nm), Continent: TX.cell('Asia'), 'YEAR(Year)': TX.cell(2010 + k), 'SUM(GDP)': TX.cell(Math.round(pop * (1 + k * 0.2))) });
-        return { rows: out, cols: [{ name: 'Admin', dataType: 'string' }, { name: 'Continent', dataType: 'string' }, { name: 'YEAR(Year)', dataType: 'int' }, { name: 'SUM(GDP)', dataType: 'float' }], enc: { location: [{ name: 'Admin' }] },
+        return { rows: out, cols: [{ name: 'Admin', dataType: 'string' }, { name: 'Continent', dataType: 'string' }, { name: 'YEAR(Year)', dataType: 'int' }, { name: 'SUM(GDP)', dataType: 'float' }].concat(new URLSearchParams(location.search).get('calc') ? [{ name: 'Calculation_1', dataType: 'string' }] : []), enc: { location: [{ name: 'Admin' }] },
           preset: [Object.assign(newLayer('cartogram', TYPES.cartogram, 'demo-cartogram'), { f: {} })] };
       }
       const ty = new URLSearchParams(location.search).get('type');          // e.g. &type=cartogram opens the demo with that layer type

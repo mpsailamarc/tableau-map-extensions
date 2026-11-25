@@ -56,6 +56,17 @@
     demo, parseCSV, cell, stage,
     /* run fn once the Extensions API is initialised (saved settings are only readable from then on) */
     ready(fn) { readyFns.push(fn); },
+    /* Workbook parameters: TX.params.list = [{ name, label, value }] (label = what the viewer sees for the current value). TX.params.onChange fires when one changes.
+       In the browser demo, ?param=Name:Label gives a parameter, and window.__setParam(name, label) changes it. */
+    params: { list: (() => { if (!demo) return []; const m = (location.search.match(/[?&]param=([^&]*)/) || [])[1]; return m ? decodeURIComponent(m).split(';').map(x => { const i = x.indexOf(':'); return { name: x.slice(0, i), label: x.slice(i + 1), value: x.slice(i + 1) }; }) : []; })(), onChange: null },
+    async initParams(getAsync) {
+      try {
+        const ps = await getAsync(), read = p => { const v = p.currentValue; return { name: p.name, label: v && v.formattedValue != null ? String(v.formattedValue) : String(v && v.value), value: v && v.value }; };
+        const refresh = () => { TX.params.list = ps.map(read); if (TX.params.onChange) TX.params.onChange(TX.params.list); };
+        ps.forEach(p => { try { p.addEventListener(tableau.TableauEventType.ParameterChanged, refresh); } catch (e) { /* ignore */ } });
+        refresh();
+      } catch (e) { /* parameters are not available here */ }
+    },
     /* 'authoring' (the workbook author, in Desktop or web edit), 'viewing' (someone just using it), or '' if unknown. In the browser demo ?mode=viewing pretends to be a viewer. */
     mode() { if (demo) return (location.search.match(/[?&]mode=(\w+)/) || [])[1] || 'demo'; try { return tableau.extensions.environment.mode || ''; } catch (e) { return ''; } },
     async fetchCSV(path) { return parseCSV(await (await fetch(path)).text()); },
@@ -99,7 +110,7 @@
       catch (err) { onData({ error: 'Could not initialise the Tableau Extensions API: ' + err }); return; }
       setStage('initialised, reading the sheets'); TX.settings.restore();
       readyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
-      const dash = tableau.extensions.dashboardContent.dashboard;
+      const dash = tableau.extensions.dashboardContent.dashboard; TX.initParams(() => dash.getParametersAsync());
       let busy = false, again = false;
       const refresh = async () => {
         if (busy) { again = true; return; }
@@ -124,7 +135,7 @@
       } catch (err) { onData({ error: 'Could not initialise the Tableau Extensions API: ' + err }); return; }
       setStage('initialised, reading the sheets'); TX.settings.restore();
       readyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
-      const ws = tableau.extensions.worksheetContent.worksheet;
+      const ws = tableau.extensions.worksheetContent.worksheet; TX.initParams(() => ws.getParametersAsync());
       let busy = false, again = false;
       const refresh = async () => {
         if (busy) { again = true; return; }
@@ -143,4 +154,5 @@
     }
   };
   window.TX = TX;
+  if (demo) window.__setParam = (name, label) => { const l = TX.params.list; let q = l.find(x => x.name === name); if (q) { q.label = label; q.value = label; } else l.push({ name, label, value: label }); if (TX.params.onChange) TX.params.onChange(l); };
 })();
