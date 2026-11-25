@@ -1093,7 +1093,9 @@
     }
     const hide = new Set(Object.values(m.f).filter(Boolean).filter(n => { const c = colInfo(n, m.cols); return (c && c.dataType === 'spatial') || isLonOrLatUsed(m, n); }));
     const title = titleOf(m, it), out = [];
-    for (const k of Object.keys(it.row)) {
+    // Only the fields on the sheet's Marks card Tooltip tile, if there are any (and they are in the data); otherwise every field of the row
+    const onTip = (((ctxOf(m.L).enc || {}).tooltip) || []).map(x => x.name).filter(n => n in it.row), keys = onTip.length ? onTip : Object.keys(it.row);
+    for (const k of keys) {
       if (hide.has(k) || /\(generated\)$/.test(k) || isNull(it.row[k]) || (colInfo(k, m.cols) || {}).dataType === 'spatial') continue;
       const t = str(it.row[k]); if (t === title) continue;
       out.push('<span class="k">' + esc(ml(m, k)) + ':</span> ' + esc(t));
@@ -1363,6 +1365,7 @@
       V += pal + fx + sel('top', 'Routes shown', [[0, 'All'], [10, 'Top 10'], [25, 'Top 25'], [50, 'Top 50'], [100, 'Top 100'], [250, 'Top 250']], +st.top) + rng(L, 'lw', 'Line width', 0.3, 3, 0.05) + rng(L, 'curve', 'Curve', 0, 0.5, 0.02) + op +
         sel('ends', 'Route ends', [['dots', 'Dots'], ['arrows', 'Arrowheads'], ['none', 'Plain lines']], endsOf(st)) + chk(L, 'anim', 'Animate flow') + '<label class="chk"><input type="checkbox" data-l="' + L.id + '" data-k="st.nlab"' + (st.nlab !== false ? ' checked' : '') + '>&nbsp;Show labels</label>';
     }
+    if (!DASH) S += '<div class="sub">Tooltips show the fields on the Marks card <b>Tooltip</b> tile; with none there, every field of the row.</div>';
     const plist = (TX.params && TX.params.list) || [];          // measure swapper: name the measure after a parameter
     S += plist.length || L.param ? '<label title="For a sheet whose measure is switched by a parameter: the legend and tooltips name the measure after the parameter\'s current value">Name the measure from parameter<select data-l="' + L.id + '" data-k="param"><option value="">(none)</option>' + plist.map(q => '<option value="' + esc(q.name) + '"' + (q.name === L.param ? ' selected' : '') + '>' + esc(trunc(q.name, 26)) + '</option>').join('') + (L.param && !plist.some(q => q.name === L.param) ? '<option value="' + esc(L.param) + '" selected>' + esc(trunc(L.param, 22)) + ' (not found)</option>' : '') + '</select></label>' + (L.param && paramLabel(L.param) ? '<div class="sub">Now showing: <b>' + esc(paramLabel(L.param)) + '</b></div>' : '') : '';
     return { setup: S, view: V };
@@ -1485,7 +1488,7 @@
         const out = [], skew = new URLSearchParams(location.search).get('skew'), cf = { Europe: 60, 'North America': 40, Asia: 8, Africa: 1, 'South America': 4, Oceania: 30 }, mulOf = (nm, k, cont) => (1 + ((nm.length * 7 + k * 13) % 10) / 10 * k) * (skew ? (cf[cont] || 1) : 1);
         for (const r of rows) for (let k = 0; k < 3; k++) out.push({ Admin: r.Admin, Continent: r.Continent, 'YEAR(Year)': TX.cell(2010 + k), 'SUM(GDP)': TX.cell(Math.round(Number(r['SUM(Population)'].value) * mulOf(String(r.Admin.value), k, String(r.Continent.value)))), Calculation_1: TX.cell(Number(r['SUM(Population)'].value) / 1000) });          // a calculated field that Tableau types as text
         if (!new URLSearchParams(location.search).get('only')) for (const [nm, pop] of [['Singapore', 5.3e6], ['Malta', 4.2e5], ['Bahrain', 1.3e6], ['Hong Kong SAR, China', 7.2e6], ['Barbados', 2.8e5], ['Maldives', 3.4e5]]) for (let k = 0; k < 3; k++) out.push({ Admin: TX.cell(nm), Continent: TX.cell('Asia'), 'YEAR(Year)': TX.cell(2010 + k), 'SUM(GDP)': TX.cell(Math.round(pop * (1 + k * 0.2))) });
-        return { rows: out, cols: [{ name: 'Admin', dataType: 'string' }, { name: 'Continent', dataType: 'string' }, { name: 'YEAR(Year)', dataType: 'int' }, { name: 'SUM(GDP)', dataType: 'float' }].concat(new URLSearchParams(location.search).get('calc') ? [{ name: 'Calculation_1', dataType: 'string' }] : []), enc: { location: [{ name: 'Admin' }] },
+        return { rows: out, cols: [{ name: 'Admin', dataType: 'string' }, { name: 'Continent', dataType: 'string' }, { name: 'YEAR(Year)', dataType: 'int' }, { name: 'SUM(GDP)', dataType: 'float' }].concat(new URLSearchParams(location.search).get('calc') ? [{ name: 'Calculation_1', dataType: 'string' }] : []), enc: Object.assign({ location: [{ name: 'Admin' }] }, new URLSearchParams(location.search).get('tt') ? { tooltip: [{ name: 'SUM(GDP)' }] } : {}),
           preset: [Object.assign(newLayer('cartogram', TYPES.cartogram, 'demo-cartogram'), { f: {} })] };
       }
       const ty = new URLSearchParams(location.search).get('type');          // e.g. &type=cartogram opens the demo with that layer type
