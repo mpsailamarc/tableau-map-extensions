@@ -40,3 +40,8 @@ details.studio .sv { margin-top: -2px; }
 details.studio .rad { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 details.studio .rad .rl { color: #444; min-width: 38px; }
 details.studio .rad label { justify-content: flex-start; }
+/* speed and loop on the play bar */
+.tl .tlh { min-width: 0; font-size: 10.5px; color: #666; }
+.tl input.tlsp { width: 64px; min-width: 48px; flex: 0 0 64px; }
+.tl button#tlLoop { min-width: 26px; padding: 0 6px; font-size: 14px; line-height: 1; color: #777; }
+.tl button#tlLoop.on { background: #dbe8f7; border-color: #4a86c5; color: #1f5fa8; }

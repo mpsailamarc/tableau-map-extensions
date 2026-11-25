@@ -1173,8 +1173,15 @@
 
   // ---- time line (play button, slider) ----
   const tl = $('tl'), tlPlay = $('tlPlay'), tlSlider = $('tlSlider'), tlLabel = $('tlLabel'), tlAll = $('tlAll');
+  // speed and loop live on the play bar itself, next to the slider
+  const tlSpeed = document.createElement('input'), tlLoop = document.createElement('button'), tlSpTxt = document.createElement('span');
+  tlSpTxt.className = 'tlh'; tlSpTxt.textContent = 'Speed'; tlSpeed.type = 'range'; tlSpeed.min = '0.25'; tlSpeed.max = '6'; tlSpeed.step = '0.25'; tlSpeed.className = 'tlsp'; tlSpeed.title = 'Playback speed';
+  tlLoop.type = 'button'; tlLoop.id = 'tlLoop'; tlLoop.innerHTML = '&#8635;'; tlLoop.title = 'Loop: start again after the last date';
+  tl.insertBefore(tlSpTxt, tlAll); tl.insertBefore(tlSpeed, tlAll); tl.insertBefore(tlLoop, tlAll);
+  tlSpeed.addEventListener('input', () => { G.tsp = +tlSpeed.value; persist(); });
+  tlLoop.addEventListener('click', () => { G.tloop = !G.tloop; persist(); updateTL(); });
   function updateTL() {
-    const n = T.steps.length; tl.hidden = n < 2; if (n < 2) return; tlAll.hidden = noAll();          // no "All" button when a cartogram is on the time line
+    const n = T.steps.length; tl.hidden = n < 2; if (n < 2) return; tlAll.hidden = noAll(); tlSpeed.value = G.tsp; tlLoop.classList.toggle('on', !!G.tloop);          // no "All" button when a cartogram is on the time line
     tlSlider.max = n - 1; tlSlider.value = T.idx < 0 ? n - 1 : T.idx;
     tlLabel.textContent = T.idx < 0 ? 'All dates' : fmtStep(T.steps[T.idx]) + '  (' + (T.idx + 1) + '/' + n + ')';
     tlPlay.textContent = T.playing ? '\u275A\u275A' : '\u25B6'; tlPlay.title = T.playing ? 'Pause' : 'Play';
@@ -1384,7 +1391,6 @@
       (showOpts ? '<label>Show<select data-g="tm"><option value="period"' + (G.tm === 'period' ? ' selected' : '') + '>This step only</option><option value="cum"' + (G.tm === 'cum' ? ' selected' : '') + '>Everything up to this step</option><option value="trail"' + (G.tm === 'trail' ? ' selected' : '') + '>The last few steps</option></select></label>' +
         (G.tm === 'trail' ? '<label>Steps kept<input type="range" data-g="tn" min="2" max="12" step="1" value="' + G.tn + '"></label>' : '') : '') +
       '<label>Step by<select data-g="tg"><option value="exact"' + (G.tg === 'exact' ? ' selected' : '') + '>Each date value</option><option value="year"' + (G.tg === 'year' ? ' selected' : '') + '>Year</option><option value="month"' + (G.tg === 'month' ? ' selected' : '') + '>Month</option><option value="day"' + (G.tg === 'day' ? ' selected' : '') + '>Day</option></select></label>' +
-      '<label>Speed<input type="range" data-g="tsp" min="0.25" max="6" step="0.25" value="' + G.tsp + '"></label><label class="chk"><input type="checkbox" data-g="tloop"' + (G.tloop ? ' checked' : '') + '>&nbsp;Loop</label>' +
       '<label class="chk" title="Adds an All button to the play bar. Off: the map always shows one date. A cartogram adds the dates up when All is used"><input type="checkbox" data-g="tall"' + (allowAll() ? ' checked' : '') + '>&nbsp;Allow "All dates" on the time line</label>' +
       (fadeOpts ? '<label class="chk" title="Marks from earlier steps become more transparent the older they are (symbols, tracks and density)"><input type="checkbox" data-g="fade"' + (G.fade ? ' checked' : '') + '>&nbsp;Fade out older marks</label>' + (G.fade ? '<label>Fade over (steps)<input type="range" data-g="fn" min="1" max="30" step="1" value="' + G.fn + '"></label>' : '') : '')
       : '<div class="sub">Choose a date field under <b>Time field</b> in the layer to get a play button.</div>') + '</div>';
