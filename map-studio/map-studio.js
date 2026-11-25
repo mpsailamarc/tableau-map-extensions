@@ -708,7 +708,7 @@
     const list = [...groups.values()]; let gmax = 1e-9, cmin = Infinity, cmax = -Infinity;
     for (const g of list) { g.s = ag(g.hs, how); if (g.s != null && g.s > gmax) gmax = g.s; g.cv = ag(g.cs, how); if (g.cv != null) { if (g.cv < cmin) cmin = g.cv; if (g.cv > cmax) cmax = g.cv; } }
     const R = (RAMPS[st.ramp] || RAMPS.blues)[1];
-    for (const g of list) g.col = cMeasure ? (g.cv == null ? null : ramp(R, cmax > cmin ? (g.cv - cmin) / (cmax - cmin) : 0.5)) : g.first.col;
+    for (const g of list) g.col = cMeasure ? (g.cv == null ? '#999' : ramp(R, cmax > cmin ? (g.cv - cmin) / (cmax - cmin) : 0.5)) : g.first.col;
     const lc = m.leg.find(l => l.ramp), ls = m.leg.find(l => l.bar);
     if (lc && cMeasure) { lc.ramp = R; lc.min = cmin === Infinity ? 0 : cmin; lc.max = cmax === -Infinity ? 1 : cmax; }
     if (ls) ls.size = gmax;
