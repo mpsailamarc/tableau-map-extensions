@@ -59,13 +59,23 @@
     /* Workbook parameters: TX.params.list = [{ name, label, value }] (label = what the viewer sees for the current value). TX.params.onChange fires when one changes.
        In the browser demo, ?param=Name:Label gives a parameter, and window.__setParam(name, label) changes it. */
     params: { list: (() => { if (!demo) return []; const m = (location.search.match(/[?&]param=([^&]*)/) || [])[1]; return m ? decodeURIComponent(m).split(';').map(x => { const i = x.indexOf(':'); return { name: x.slice(0, i), label: x.slice(i + 1), value: x.slice(i + 1) }; }) : []; })(), onChange: null },
+    /* The parameters are read again, from Tableau, every time one changes and every time the sheet's data reloads (a measure swapper changes the data too),
+       because the Parameter objects fetched first keep their old current value. */
     async initParams(getAsync) {
+      TX._pget = getAsync;
       try {
-        const ps = await getAsync(), read = p => { const v = p.currentValue; return { name: p.name, label: v && v.formattedValue != null ? String(v.formattedValue) : String(v && v.value), value: v && v.value }; };
-        const refresh = () => { TX.params.list = ps.map(read); if (TX.params.onChange) TX.params.onChange(TX.params.list); };
-        ps.forEach(p => { try { p.addEventListener(tableau.TableauEventType.ParameterChanged, refresh); } catch (e) { /* ignore */ } });
-        refresh();
+        const ps = await getAsync();
+        ps.forEach(p => { try { p.addEventListener(tableau.TableauEventType.ParameterChanged, () => TX.refreshParams()); } catch (e) { /* ignore */ } });
+        await TX.refreshParams();
       } catch (e) { /* parameters are not available here */ }
+    },
+    async refreshParams() {
+      if (!TX._pget) return;
+      try {
+        const ps = await TX._pget(), read = p => { const v = p.currentValue; return { name: p.name, label: v && v.formattedValue != null ? String(v.formattedValue) : String(v && v.value), value: v && v.value }; };
+        const list = ps.map(read), changed = JSON.stringify(list) !== JSON.stringify(TX.params.list);
+        TX.params.list = list; if (changed && TX.params.onChange) TX.params.onChange(list);
+      } catch (e) { /* ignore */ }
     },
     /* 'authoring' (the workbook author, in Desktop or web edit), 'viewing' (someone just using it), or '' if unknown. In the browser demo ?mode=viewing pretends to be a viewer. */
     mode() { if (demo) return (location.search.match(/[?&]mode=(\w+)/) || [])[1] || 'demo'; try { return tableau.extensions.environment.mode || ''; } catch (e) { return ''; } },
@@ -121,6 +131,7 @@
             try { sheets[ws.name] = await getRows(ws); } catch (err) { sheets[ws.name] = { rows: [], cols: [], error: String(err) }; }
           }
           onData({ sheets });
+          TX.refreshParams();
         } catch (err) { onData({ error: String(err) }); }
         busy = false;
         if (again) { again = false; refresh(); }
@@ -144,6 +155,7 @@
           const [enc, data] = await Promise.all([getEncodings(ws), getRows(ws)]);
           if (TX.onRefresh) TX.onRefresh('read', { rows: data.rows.length, s: (Date.now() - t0) / 1000 });
           onData({ rows: data.rows, cols: data.cols, enc });
+          TX.refreshParams();
         } catch (err) { onData({ error: String(err) }); }
         if (TX.onRefresh) TX.onRefresh('done', { s: (Date.now() - t0) / 1000 });
         busy = false;
