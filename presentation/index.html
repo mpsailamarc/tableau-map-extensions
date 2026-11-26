@@ -295,8 +295,8 @@
   <div class="kick">User guide</div>
   <h1>Build a map</h1>
   <div class="grid g2" style="max-width:900px;margin-top:10px">
-    <div class="card" style="border-top:4px solid var(--a)"><h3>A · One layer</h3><p style="margin:0">Map studio on a single sheet, including a <b>measure swapper</b>.</p></div>
-    <div class="card" style="border-top:4px solid var(--b)"><h3>B · Several layers</h3><p style="margin:0">Map studio for dashboards, a <b>parameter that changes the date</b>, and a <b>filter per layer</b>.</p></div>
+    <div class="card" style="border-top:4px solid var(--a)"><h3 style="color:var(--a)">Part A · One layer</h3><p style="margin:0">Map studio on a single sheet, including a <b>measure swapper</b>.</p></div>
+    <div class="card" style="border-top:4px solid var(--b)"><h3 style="color:var(--b)">Part B · Several layers</h3><p style="margin:0">Map studio for dashboards, a <b>parameter that changes the date</b>, and a <b>filter per layer</b>.</p></div>
   </div>
 </section>
 
@@ -346,9 +346,26 @@
   <div class="foot"><span>Map extensions</span><span class="n"></span></div>
 </section>
 
+<!-- B INTRO -->
+<section class="slide">
+  <div class="kick" style="color:var(--b)">User guide · part B</div>
+  <h1 style="font-size:50px;margin-bottom:6px"><span style="color:var(--b)">B</span> · From one layer to several</h1>
+  <p class="sub" style="margin-bottom:16px">Part A built a map on a single sheet. Part B stacks several sheets as layers. Here is what changes.</p>
+  <table style="font-size:16px">
+    <tr><th style="width:20%"></th><th style="width:38%;color:var(--a)">A · One layer</th><th style="color:var(--b)">B · Several layers</th></tr>
+    <tr><td><b>Extension</b></td><td>Map studio, added from the sheet's Marks card</td><td>Map studio for dashboards, added as an Extension object on a dashboard</td></tr>
+    <tr><td><b>Sheets</b></td><td>One sheet is the whole map</td><td>One sheet per layer, with its fields on Detail</td></tr>
+    <tr><td><b>Data sources</b></td><td>One</td><td>Any mix: shapefile, CSV, published source</td></tr>
+    <tr><td><b>Filters</b></td><td>A filter changes the whole map</td><td>A filter can target one layer's sheet only</td></tr>
+    <tr><td><b>Time</b></td><td>Time field with the built-in play bar</td><td>A parameter plus the Parameter player moves all layers together</td></tr>
+    <tr><td><b>Layer setup card</b></td><td>One layer, set from the Marks card</td><td>A list of layers: pick each one's sheet, reorder, add, remove</td></tr>
+  </table>
+  <div class="foot"><span>Map extensions</span><span class="n"></span></div>
+</section>
+
 <!-- 13 MULTI LAYER -->
 <section class="slide">
-  <div class="kick">User guide B · several layers</div>
+  <div class="kick" style="color:var(--b)">User guide B · several layers</div>
   <h2>A multi-layer map with the dashboard extension</h2>
   <p class="sub">Example: regions (shapefile) + stores (CSV) + routes (published source).</p>
   <div class="grid g2 fill">
@@ -369,7 +386,7 @@
 
 <!-- 14 PER-LAYER FILTER -->
 <section class="slide">
-  <div class="kick">User guide B · filter at the level of each layer</div>
+  <div class="kick" style="color:var(--b)">User guide B · filter at the level of each layer</div>
   <h2>Each sheet is a layer, so each layer has its own filter</h2>
   <p class="sub">Filters, dashboard actions and parameters on a layer's sheet change that layer only.</p>
   <div class="grid g2 fill">
@@ -390,7 +407,7 @@
 
 <!-- 15 DATE PLAYER -->
 <section class="slide">
-  <div class="kick">User guide B · automatic date change</div>
+  <div class="kick" style="color:var(--b)">User guide B · automatic date change</div>
   <h2>A parameter that steps through the dates for all layers</h2>
   <p class="sub">One play button moves Regions, Stores and Routes through time together.</p>
   <div class="grid g2 fill">
